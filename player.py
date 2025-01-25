@@ -612,7 +612,6 @@ class Minigame:
                 elif self.repair_stage == 2:
                     self.repair_stage = 3
                 else:
-                    self.repair_stage = 1
                     self.third_repair_complete = True
 
                 if not self.third_repair_complete:
@@ -702,7 +701,7 @@ class Minigame:
                 self.anim_start_time = time.time()
                 self.boom_scale = 0
                 self.boom_alpha = 255
-        if self.explosion_anim:
+        if self.explosion_anim and not self.third_repair_complete:
             explosion_progress = min(
                 1, (time.time() - self.anim_start_time) / self.explosion_duration)
             self.boom_scale = 2 * explosion_progress
@@ -735,10 +734,12 @@ class Minigame:
                             10, 20)
                         self.item_scatter_velocities[i] = direction * \
                             scatter_speed
+        else:
+            self.explosion_anim = False
 
         if self.hand_smash:
             current_hand_smash_time = time.time() - self.hand_smash_start_time
-            if current_hand_smash_time < self.hand_smash_anim_duration:
+            if current_hand_smash_time < self.hand_smash_anim_duration and not self.third_repair_complete:
                 hand_smash_rect = self.hand_smash_image.get_rect(
                     center=self.hand_smash_center)
                 surface.blit(self.hand_smash_image, hand_smash_rect)
@@ -775,6 +776,71 @@ class Minigame:
             surface.blit(glitch_surface, (0, 0))
             if time.time() - self.glitch_start_time > 0.3:
                 self.glitch_effect = False
+
+        if self.third_repair_complete and self.repair_stage == 3:
+            text_color = white
+            draw_text("ВЯЧПЛЕЕР", text_color, pygame.Rect(
+                40, 40, 200, 50), surface, text_font=self.game_font)
+
+            controls_y = self.rect.height - 80
+            self.play_button_rect = pygame.Rect(
+                self.rect.width // 2 - 15, controls_y + 15, 30, 30)
+            self.stop_button_rect = pygame.Rect(
+                self.rect.width // 2 - 65, controls_y + 15, 30, 30)
+            self.rewind_button_rect = pygame.Rect(
+                self.rect.width // 2 - 115, controls_y + 15, 30, 30)
+            self.forward_button_rect = pygame.Rect(
+                self.rect.width // 2 + 35, controls_y + 15, 30, 30)
+            self.volume_rect = pygame.Rect(
+                self.rect.width - 150, controls_y + 15, 100, 30)
+            self.timeline_rect = pygame.Rect(
+                50, controls_y - 15, self.rect.width - 100, 10)
+
+            controls_color = black
+            pygame.draw.rect(
+                surface, controls_color, (0, controls_y, self.rect.width, 60))
+
+            progress_bar_width = self.timeline_rect.width * self.timeline_progress
+            timeline_color = light_gray
+            progress_color = green
+
+            pygame.draw.rect(surface, timeline_color, self.timeline_rect)
+            progress_bar_rect = pygame.Rect(self.timeline_rect.x, self.timeline_rect.y, int(progress_bar_width),
+                                            self.timeline_rect.height)
+            pygame.draw.rect(surface, progress_color, progress_bar_rect)
+
+            icon_color = light_gray
+            volume_slider_color = green
+
+            surface.blit(
+                play_icon if not self.playing else pause_icon, self.play_button_rect)
+            surface.blit(stop_icon, self.stop_button_rect)
+            pygame.draw.polygon(surface, icon_color,
+                                [(self.rewind_button_rect.centerx - 10, self.rewind_button_rect.centery - 8),
+                                 (self.rewind_button_rect.centerx - 10,
+                                  self.rewind_button_rect.centery + 8),
+                                 (self.rewind_button_rect.centerx - 18, self.rewind_button_rect.centery)])
+            pygame.draw.polygon(surface, icon_color,
+                                [(self.rewind_button_rect.centerx - 1, self.rewind_button_rect.centery - 8),
+                                 (self.rewind_button_rect.centerx - 1,
+                                  self.rewind_button_rect.centery + 8),
+                                 (self.rewind_button_rect.centerx - 9, self.rewind_button_rect.centery)])
+            pygame.draw.polygon(surface, icon_color,
+                                [(self.forward_button_rect.centerx + 10, self.forward_button_rect.centery - 8),
+                                 (self.forward_button_rect.centerx + 10,
+                                  self.forward_button_rect.centery + 8),
+                                 (self.forward_button_rect.centerx + 18, self.forward_button_rect.centery)])
+            pygame.draw.polygon(surface, icon_color,
+                                [(self.forward_button_rect.centerx + 1, self.forward_button_rect.centery - 8),
+                                 (self.forward_button_rect.centerx + 1,
+                                  self.forward_button_rect.centery + 8),
+                                 (self.forward_button_rect.centerx + 9, self.forward_button_rect.centery)])
+            pygame.draw.rect(surface, icon_color, self.volume_rect)
+            pygame.draw.circle(surface, volume_slider_color, (self.volume_rect.x +
+                                                              30, self.volume_rect.centery), 7)
+            text_vol_color = light_gray
+            draw_text("VOL", text_vol_color, pygame.Rect(self.volume_rect.x - 45, self.volume_rect.y, 45, 30), surface,
+                      text_font=self.game_font)
 
     def handle_event(self, event, windows):
 

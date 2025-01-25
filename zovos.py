@@ -1,10 +1,12 @@
-import pygame
-import time
-import sys
-import random
 import os
-from player import Minigame
+import random
+import sys
+import time
+
+import pygame
+
 from mail_app import MailApp
+from player import Minigame
 
 pygame.init()
 
@@ -109,7 +111,6 @@ def get_background_image(filename):
 current_background_setting = "zovosbg.png"
 background_image = get_background_image(current_background_setting)
 
-
 show_startup = True
 current_letter = 0
 last_letter_time = time.time()
@@ -185,6 +186,8 @@ class Window:
         self.clipboard = ""
         self.selection_start = None
         self.selection_end = None
+        self.is_banner_window = False
+        self.banner_image = None
         self.mail_app = None
 
         self.char_limit_per_line = 70
@@ -282,6 +285,9 @@ class Window:
 
             else:
                 pygame.draw.rect(screen, white, self.rect)
+                if self.is_banner_window and self.banner_image:
+                    banner_rect = self.banner_image.get_rect(center=self.rect.center)
+                    screen.blit(self.banner_image, banner_rect)
 
             if self.minigame:
                 self.minigame.draw(screen.subsurface(self.rect))
@@ -363,9 +369,9 @@ class Window:
                             char_count += len(line_render) + 1
 
                         cursor_x = self.rect.x + 10 + \
-                            file_font.size(lines[line_num][:char_in_line])[0]
+                                   file_font.size(lines[line_num][:char_in_line])[0]
                         cursor_y = self.rect.y + 10 + line_num * \
-                            (file_font.get_height() + 5)
+                                   (file_font.get_height() + 5)
                         pygame.draw.line(screen, black, (cursor_x, cursor_y),
                                          (cursor_x, cursor_y + file_font.get_height()), 2)
             elif self.mail_app:
@@ -400,7 +406,8 @@ class Window:
                     line_text_surface = file_font.render(
                         lines[clicked_line_index], True, black)
                     char_width = line_text_surface.get_width() / max(1,
-                                                                     len(lines[clicked_line_index])) if lines[clicked_line_index] else file_font.size(" ")[0]
+                                                                     len(lines[clicked_line_index])) if lines[
+                        clicked_line_index] else file_font.size(" ")[0]
 
                     clicked_char_index = min(len(lines[clicked_line_index]), max(
                         0, int(click_pos_local_x // char_width)))
@@ -460,7 +467,7 @@ class Window:
 
                 self.title_rect.center = self.title_bar.center
                 self.close_button_rect.x = self.title_bar.x + \
-                    self.title_bar.width - self.close_button_size - 10
+                                           self.title_bar.width - self.close_button_size - 10
                 self.close_button_rect.y = self.title_bar.y + 15
             if self.text_input and self.selection_start is not None and pygame.mouse.get_pressed()[0]:
                 if self.rect.collidepoint(event.pos):
@@ -475,7 +482,8 @@ class Window:
                     line_text_surface = file_font.render(
                         lines[clicked_line_index], True, black)
                     char_width = line_text_surface.get_width() / max(1,
-                                                                     len(lines[clicked_line_index])) if lines[clicked_line_index] else file_font.size(" ")[0]
+                                                                     len(lines[clicked_line_index])) if lines[
+                        clicked_line_index] else file_font.size(" ")[0]
                     clicked_char_index = min(len(lines[clicked_line_index]), max(
                         0, int(click_pos_local_x // char_width)))
 
@@ -486,23 +494,28 @@ class Window:
                     self.selection_end = char_count + clicked_char_index
 
         elif event.type == pygame.KEYDOWN and self.text_input and self.file and self.file.name.endswith(".txt"):
-            if event.key not in [pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_CAPSLOCK, pygame.K_NUMLOCK]:
+            if event.key not in [pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_CAPSLOCK,
+                                 pygame.K_NUMLOCK]:
                 self.held_key = event.key
                 self.key_down_time = time.time()
 
             if event.key == pygame.K_LEFT:
                 self.cursor_pos = max(0, self.cursor_pos - 1)
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                           pygame.key.get_pressed()[
+                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                         pygame.key.get_pressed()[
+                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
             elif event.key == pygame.K_RIGHT:
                 self.cursor_pos = min(
                     len(self.file.content), self.cursor_pos + 1)
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                           pygame.key.get_pressed()[
+                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                         pygame.key.get_pressed()[
+                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
             elif event.key == pygame.K_UP:
                 lines = self.file.content.split('\n')
                 current_line_index = 0
@@ -523,10 +536,12 @@ class Window:
                 else:
                     self.cursor_pos = 0
 
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                           pygame.key.get_pressed()[
+                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                         pygame.key.get_pressed()[
+                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
 
             elif event.key == pygame.K_DOWN:
                 lines = self.file.content.split('\n')
@@ -548,44 +563,48 @@ class Window:
                 else:
                     self.cursor_pos = len(self.file.content)
 
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
-                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                           pygame.key.get_pressed()[
+                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
+                                                         pygame.key.get_pressed()[
+                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
 
             elif event.key == pygame.K_BACKSPACE:
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.file.content = self.file.content[:start_index] + \
-                        self.file.content[end_index:]
+                                        self.file.content[end_index:]
                     self.cursor_pos = start_index
                     self.selection_start = None
                     self.selection_end = None
                 elif self.cursor_pos > 0:
                     self.file.content = self.file.content[:self.cursor_pos -
-                                                          1] + self.file.content[self.cursor_pos:]
+                                                           1] + self.file.content[self.cursor_pos:]
                     self.cursor_pos -= 1
             elif event.key == pygame.K_DELETE:
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.file.content = self.file.content[:start_index] + \
-                        self.file.content[end_index:]
+                                        self.file.content[end_index:]
                     self.cursor_pos = start_index
                     self.selection_start = None
                     self.selection_end = None
                 elif self.cursor_pos < len(self.file.content):
                     self.file.content = self.file.content[:self.cursor_pos] + \
-                        self.file.content[self.cursor_pos+1:]
-            elif (event.key == pygame.K_c and (pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
+                                        self.file.content[self.cursor_pos + 1:]
+            elif (event.key == pygame.K_c and (
+                    pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.clipboard = self.file.content[start_index:end_index]
-            elif (event.key == pygame.K_v and (pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
+            elif (event.key == pygame.K_v and (
+                    pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
                 temp_content = self.file.content[:self.cursor_pos] + \
-                    self.clipboard + self.file.content[self.cursor_pos:]
+                               self.clipboard + self.file.content[self.cursor_pos:]
                 lines = temp_content.split('\n')
                 paste_allowed = True
                 for line in lines:
@@ -599,11 +618,12 @@ class Window:
                     print("Вставка невозможна: превышена максимальная длина строки.")
             elif event.key == pygame.K_RETURN:
                 self.file.content = self.file.content[:self.cursor_pos] + \
-                    '\n' + self.file.content[self.cursor_pos:]
+                                    '\n' + self.file.content[self.cursor_pos:]
                 self.cursor_pos += 1
-            elif event.unicode and file_font.render(self.file.content[:self.cursor_pos] + event.unicode, True, black).get_width() < self.rect.width - 20:
+            elif event.unicode and file_font.render(self.file.content[:self.cursor_pos] + event.unicode, True,
+                                                    black).get_width() < self.rect.width - 20:
                 self.file.content = self.file.content[:self.cursor_pos] + \
-                    event.unicode + self.file.content[self.cursor_pos:]
+                                    event.unicode + self.file.content[self.cursor_pos:]
                 self.cursor_pos += 1
 
             self.cursor_visible = True
@@ -808,6 +828,46 @@ class DesktopFile:
             windows.append(new_window)
             taskbar.add_icon(new_window.taskbar_icon)
             new_window.bring_to_front(windows)
+        elif self.name == "ВЯЧ (1).py":
+            vyach_py_1_opened = False
+            for window in windows:
+                if window.is_banner_window:
+                    vyach_py_1_opened = True
+                    break
+            if vyach_py_1_opened:
+                print("ВЯЧ (1).py is already running!")
+                return
+            banner_dir = "images/banners"
+            banner_images_paths = [
+                os.path.join(banner_dir, f)
+                for f in os.listdir(banner_dir)
+                if os.path.isfile(os.path.join(banner_dir, f))
+            ]
+            if not banner_images_paths:
+                print(f"No banner images found in '{banner_dir}'")
+                return
+
+            def get_random_banner():
+                try:
+                    image_path = random.choice(banner_images_paths)
+                    image = pygame.image.load(image_path).convert_alpha()
+                    return pygame.transform.scale(image, (500, 300))  # Ensure size is 500x300
+                except Exception as e:
+                    print(f"Failed to load banner image: {e}")
+                    return None
+
+            def get_random_position():
+                x = random.randint(0, screen_width - 500)
+
+                y = random.randint(50, screen_height - 300 - taskbar_height - 50)
+                return x, y
+
+            global is_spawning_banners, banner_spawn_timer, banner_spawn_interval, banner_spawn_duration, banner_spawn_end_time
+            is_spawning_banners = True
+            banner_spawn_timer = time.time()
+            banner_spawn_interval = 0.4
+            banner_spawn_duration = 60
+            banner_spawn_end_time = time.time() + banner_spawn_duration
 
 
 class Trash:
@@ -906,7 +966,7 @@ class ContextMenu:
 
                 if i == self.selected_option:
                     pygame.draw.rect(screen, light_gray, (self.x, self.y +
-                                     i * self.item_height, self.width, self.item_height))
+                                                          i * self.item_height, self.width, self.item_height))
 
                 screen.blit(option_surface, text_rect)
 
@@ -1024,7 +1084,7 @@ class Taskbar:
         self.icon_margin = 10
         self.pusk_button_x = 10
         self.pusk_button_y = screen_height - height + \
-            (height - 60) // 2
+                             (height - 60) // 2
         self.pusk_button = PuskButton(
             # "pusk.png" should be in "images"
             self.pusk_button_x, self.pusk_button_y, "pusk.png")
@@ -1040,7 +1100,7 @@ class Taskbar:
         pygame.draw.rect(screen, taskbar_color, self.rect)
         self.pusk_button.draw(screen)
         icon_x = self.pusk_button_x + self.pusk_button.rect.width + \
-            self.icon_margin
+                 self.icon_margin
 
         for icon in self.icons:
             icon.draw(screen, icon_x, self.rect.y +
@@ -1054,7 +1114,7 @@ class Taskbar:
             icon_x = self.pusk_button_x + self.pusk_button.rect.width + self.icon_margin
             for icon in self.icons:
                 icon_rect = pygame.Rect(icon_x, self.rect.y + (
-                    self.rect.height - self.icon_height) // 2, self.icon_width, self.icon_height)
+                        self.rect.height - self.icon_height) // 2, self.icon_width, self.icon_height)
                 if icon_rect.collidepoint(event.pos):
                     icon.window.bring_to_front(windows)
                     break
@@ -1100,14 +1160,14 @@ class TaskbarIcon:
             screen.blit(text_surface, text_rect)
 
 
-files = [DesktopFile("ВЯЧ.py", "py.png", 100, 100, protected=True),  # "py.png" should be in "images"
-         DesktopFile("Настройки", "nastoiku.png",  # "nastoiku.png" should be in "images"
+files = [DesktopFile("Настройки", "nastoiku.png",  # "nastoiku.png" should be in "images"
                      1800, 200, protected=True),
          # "pochta.png" should be in "images"
          DesktopFile("Почта", "pochta.png", 1800, 350),
          ]
 
-files[1].content = "Это тестовый файл настроек.\nЗдесь могут быть различные параметры. Очень длинная строка без пробелов чтобы проверить перенос по символам и как он будет работать в нашем текстовом редакторе. asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf"
+files[
+    1].content = "Это тестовый файл настроек.\nЗдесь могут быть различные параметры. Очень длинная строка без пробелов чтобы проверить перенос по символам и как он будет работать в нашем текстовом редакторе. asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf"
 
 trash = Trash(1800, 10)
 
@@ -1116,13 +1176,29 @@ context_menu = None
 running = True
 selected_file = None
 dragging_file = None
+vyach_py_time = None
+second_day_init = False
+black_screen_start_time = 0
+is_spawning_banners = None
+banner_spawn_timer = None
+banner_spawn_interval = None
+banner_spawn_duration = None
+banner_spawn_end_time = None
 
 key_repeat_interval = 0.05
+pending_vyach_message = None  # Global variable to hold pending message
+message_sent = False
+desktop_start_time = None
 key_repeat_timer = 0
 held_keys = set()
 
 taskbar_height = 60
 taskbar = Taskbar(taskbar_height)
+
+
+def save_pending_message_to_file(message):
+    with open("messages.txt", "w") as f:
+        f.write(message)
 
 
 def move_file_to_front(file):
@@ -1149,7 +1225,8 @@ while running:
         if event.type == pygame.KEYUP:
             held_keys.discard(event.key)
             for window in windows:
-                if window.text_input and window.file and window.file.name.endswith(".txt") and window.held_key == event.key:
+                if window.text_input and window.file and window.file.name.endswith(
+                        ".txt") and window.held_key == event.key:
                     window.held_key = None
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1196,6 +1273,21 @@ while running:
                         window.handle_event(key_event, windows, taskbar)
 
     if show_startup:
+        vyach_py = Window(None, 800, 600, 200,
+                          200, file=None)
+        vyach_py.minigame = Minigame(
+            vyach_py.rect, game_font, console_font)
+        windows.append(vyach_py)
+        if vyach_py.minigame.third_repair_complete and vyach_py.minigame.repair_stage == 3 and not second_day_init:
+            windows.clear()
+            description_font = get_font(font_path, 72)
+            second_day_init = True
+            description_text = """
+2 день разработки
+
+
+5 дней до сдачи проекта
+"""
         current_time = time.time()
         if frame_time == 0:
             frame_time = current_time
@@ -1232,13 +1324,106 @@ while running:
     elif show_description:
         screen.fill(black)
         draw_description(screen, description_text, description_font, white)
-        if description_start_time is not None and pygame.time.get_ticks() - description_start_time >= 5000:
+        if description_start_time is not None and pygame.time.get_ticks() - description_start_time >= 2500:
             show_description = False
             description_start_time = None
+            windows.clear()
+            if desktop_start_time is None:
+                desktop_start_time = time.time()
 
     else:
+        if is_spawning_banners:
+            current_time = time.time()
+            if current_time >= banner_spawn_end_time:
+                is_spawning_banners = False
+                print("Banner spawning завершено.") # Убедитесь, что метод вызывается
+
+            if current_time - banner_spawn_timer >= banner_spawn_interval:
+                banner_dir = "images/banners"
+                banner_images_paths = [
+                    os.path.join(banner_dir, f)
+                    for f in os.listdir(banner_dir)
+                    if os.path.isfile(os.path.join(banner_dir, f))
+                ]
+                def get_random_banner():
+                    try:
+                        image_path = random.choice(banner_images_paths)
+                        image = pygame.image.load(image_path).convert_alpha()
+                        return pygame.transform.scale(image, (500, 300))
+                    except Exception as e:
+                        print(f"Failed to load banner image: {e}")
+                        return None
+                def get_random_position():
+                    x = random.randint(0, screen_width - 500)
+                    y = random.randint(50, screen_height - 300 - taskbar_height - 50)
+                    return x, y
+                pos = get_random_position()
+                banner_image = get_random_banner()
+                if banner_image:
+                    new_window = Window("Banner", 500, 300, pos[0], pos[1], file=None) # No file association for banners
+                    new_window.is_banner_window = True
+                    new_window.banner_image = banner_image
+                    windows.append(new_window)
+                    # No taskbar icon for banner windows
+                banner_spawn_timer = current_time
+        vyach_py_window = None
+        for window in windows:
+            if window.minigame:
+                vyach_py_window = window
+                break
+        if vyach_py_window and vyach_py_window.minigame.third_repair_complete and vyach_py_window.minigame.repair_stage == 3 and not second_day_init:
+            if black_screen_start_time == 0:
+                black_screen_start_time = time.time()
+                screen.fill(black)
+                pygame.display.flip()
+            if time.time() - black_screen_start_time >= 0.5:
+                show_startup = True
+                windows.clear()
+                description_font = get_font(font_path, 72)
+                description_text = """
+2 день разработки
+
+
+5 дней до сдачи проекта
+"""
+                files = [file for file in files if file.name != "ВЯЧ.py"]
+                current_frame = 0
+                frame_time = 0
+                description_start_time = pygame.time.get_ticks()
+                second_day_init = True
+                black_screen_start_time = 0
+
+        if vyach_py_time is None:
+            vyach_py_time = time.time()
         screen.blit(background_image, (0, 0))
 
+        if not message_sent:
+            if time.time() - desktop_start_time >= 5 and not second_day_init:  # 5 seconds after desktop
+                message_sent = True
+                vyach_file = DesktopFile("ВЯЧ.py", "py.png", 100, 100)  # Create file
+                files.append(vyach_file)  # Add file to desktop
+                message_content = f"Сообщение от Вяча:ZvФайл '{vyach_file.name}' был добавлен на рабочий стол."
+                save_pending_message_to_file(message_content)
+                for window in windows:
+                    if window.mail_app:
+                        window.mail_app.receive_message(message_content)  # Send if mail app is open
+                        pending_vyach_message = None  # Clear pending message after sending
+                        break
+                else:
+                    print(f"Сообщение от Вяча: Файл '{vyach_file.name}' был добавлен на рабочий стол.")
+            elif time.time() - desktop_start_time >= 5 and second_day_init:  # 5 seconds after desktop
+                message_sent = True
+                vyach_file = DesktopFile("ВЯЧ (1).py", "py.png", 100, 100)  # Create file
+                files.append(vyach_file)  # Add file to desktop
+                message_content = f"Сообщение от Вяча:ZvФайл '{vyach_file.name}' был добавлен на рабочий стол."
+                save_pending_message_to_file(message_content)
+                for window in windows:
+                    if window.mail_app:
+                        window.mail_app.receive_message(message_content)  # Send if mail app is open
+                        pending_vyach_message = None  # Clear pending message after sending
+                        break
+                else:
+                    print(f"Сообщение от Вяча: Файл '{vyach_file.name}' был добавлен на рабочий стол.")
         trash.draw(screen)
         taskbar.draw(screen)
 
