@@ -1,19 +1,20 @@
-import os
-import random
-import sys
-import time
-
+# main.py
 import pygame
-
-from mail_app import MailApp
-from player import Minigame
-
+import time
+import sys
+import random
+import os
+import sqlite3  # Import sqlite3
+import threading  # Import threading
+from pong_app import MyGameApp
+from settings_app import SettingsApp
 pygame.init()
+pygame.font.init()  # Ensure font module is initialized
 
 screen_width = 1920
 screen_height = 1080
 screen = pygame.display.set_mode(
-    (screen_width, screen_height), pygame.FULLSCREEN, vsync=1)
+    (screen_width, screen_height), pygame.FULLSCREEN)
 pygame.display.set_caption("ZOV OS Startup")
 
 blue = (0, 0, 255)
@@ -42,7 +43,6 @@ def get_font(font_path, size):
             font_cache[key] = pygame.font.Font(font_path, size)
         except FileNotFoundError:
             font_cache[key] = pygame.font.SysFont(None, size)
-            print(f"Font file '{font_path}' not found, using default system font for size {size}.")
     return font_cache[key]
 
 
@@ -76,7 +76,6 @@ try:
         loop_frames.append(pygame.transform.scale(
             frame, (screen_width, screen_height)))
 except FileNotFoundError as e:
-    print(f"Error: {e}")
     pygame.quit()
     sys.exit()
 
@@ -101,15 +100,58 @@ def get_background_image(filename):
             background_cache[filename] = pygame.transform.scale(
                 image, (screen_width, screen_height))
         except FileNotFoundError:
-            print(f"Background image '{filename}' not found, using default color.")
             surface = pygame.Surface((screen_width, screen_height))
             surface.fill(light_blue_grey)
             background_cache[filename] = surface
     return background_cache[filename]
 
+# Database functions
 
-current_background_setting = "zovosbg.png"
+
+def init_settings_db():
+    conn = sqlite3.connect('system_settings.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS system_settings (
+            setting_name TEXT PRIMARY KEY,
+            setting_value TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+def get_setting(setting_name, default_value):
+    conn = sqlite3.connect('system_settings.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT setting_value FROM system_settings WHERE setting_name=?", (setting_name,))
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return result[0]
+    else:
+        update_setting(setting_name, default_value)
+        return default_value
+
+
+def update_setting(setting_name, setting_value):
+    conn = sqlite3.connect('system_settings.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO system_settings (setting_name, setting_value) VALUES (?, ?)",
+                   (setting_name, setting_value))
+    conn.commit()
+    conn.close()
+
+
+# Initialize database
+init_settings_db()
+
+current_background_setting = get_setting(
+    'background_image', 'zovosbg.png')  # Load from DB or use default
 background_image = get_background_image(current_background_setting)
+icon_layout_setting = get_setting(
+    'icon_layout', 'grid')  # Load icon layout setting
 
 show_startup = True
 current_letter = 0
@@ -125,10 +167,29 @@ description_start_time = None
 clock = pygame.time.Clock()
 fps = 60
 
-description_text = """
-Ты вместе с Вячеславом Ситкиным разрабатываешь проект на Яндекс LMS
-Твоя задача: Максимально сохранить проект в целостности и сдать его.
-"""
+# Settings refresh timer
+last_settings_refresh_time = time.time()
+settings_refresh_interval = 1  # seconds
+
+
+def refresh_settings_from_db(files):
+    global current_background_setting, background_image, icon_layout_setting
+    current_background_setting = get_setting(
+        'background_image', 'zovosbg.png')
+    background_image = get_background_image(current_background_setting)
+    icon_layout_setting = get_setting('icon_layout', 'grid')
+
+    if icon_layout_setting == 'grid':
+        grid_size = 128 + 20  # Icon size + spacing
+        for file in files:
+            file.rect.topleft = file.get_grid_position(
+                grid_size)
+            file.name_rect.center = (
+                file.rect.centerx, file.rect.bottom + 20)
+            file.update_selection_rect()
+    elif icon_layout_setting == 'free':
+        # For free layout, positions are kept as they are, or load positions from DB if implemented
+        pass  # Add logic here if you save icon positions in DB
 
 
 def draw_description(screen, text, font, color):
@@ -149,8 +210,13 @@ def draw_description(screen, text, font, color):
         screen.blit(text_surface, (start_x, start_y + i * line_height))
 
 
+def run_app_in_thread(app_instance, subsurface_rect):
+    """Runs the ported application in a separate thread."""
+    app_instance.run_app(subsurface_rect)  # Call a run_app method in the app
+
+
 class Window:
-    def __init__(self, title, width, height, x, y, file=None):
+    def __init__(self, title, width, height, x, y, file=None, app_instance=None):
         self.title = title
         self.width = width
         self.height = height
@@ -177,7 +243,6 @@ class Window:
         self.is_open = True
         self.drag_offset_x = 0
         self.drag_offset_y = 0
-        self.minigame = None
         self.file = file
         self.text_input = False
         self.cursor_visible = True
@@ -186,9 +251,9 @@ class Window:
         self.clipboard = ""
         self.selection_start = None
         self.selection_end = None
-        self.is_banner_window = False
-        self.banner_image = None
         self.mail_app = None
+        self.app_instance = app_instance  # Instance of the external Pygame application
+        self.app_thread = None  # Thread for ported application
 
         self.char_limit_per_line = 70
 
@@ -201,48 +266,6 @@ class Window:
             icon_image_path = self.file.image_path
         self.taskbar_icon = TaskbarIcon(
             self, icon_image_path)
-        print(f"Window created at x={x}, y={y}")
-
-        self.settings_options_rects = {}
-        self.settings_options = ["Background 1", "Background 2",
-                                 "Background 3", "Color"]
-        self.settings_option_positions = {}
-        self.background_previews = {}
-        self.load_background_previews()
-        self.settings_section_title_font = get_font(
-            font_path, 24)
-
-    def load_background_previews(self):
-        preview_width = 100
-        preview_height = int(preview_width * 9 / 16)
-        preview_size = (preview_width, preview_height)
-
-        preview_cache = {}
-
-        def get_preview_surface(filename, size):
-            key = (filename, size)
-            if key not in preview_cache:
-                try:
-                    preview_image = pygame.image.load(
-                        os.path.join("images", filename)).convert()
-                    preview_cache[key] = pygame.transform.scale(
-                        preview_image, size)
-                except FileNotFoundError:
-                    print(f"Preview image '{filename}' not found, using default color.")
-                    surface = pygame.Surface(size)
-                    surface.fill(light_blue_grey)
-                    preview_cache[key] = surface
-            return preview_cache[key]
-
-        self.background_previews["zovosbg.png"] = get_preview_surface(
-            "zovosbg.png", preview_size)
-        self.background_previews["zovosbg2.png"] = get_preview_surface(
-            "zovosbg2.png", preview_size)
-        self.background_previews["zovosbg3.png"] = get_preview_surface(
-            "zovosbg3.png", preview_size)
-
-        self.background_previews["color"] = pygame.Surface(preview_size)
-        self.background_previews["color"].fill(light_blue_grey)
 
     def draw(self, screen):
         if self.is_open:
@@ -251,47 +274,22 @@ class Window:
             pygame.draw.rect(screen, red, self.close_button_rect)
             screen.blit(self.close_cross_surface,
                         self.close_button_rect.topleft)
-            if self.file and self.file.name == "Настройки":
+            # Check if app_instance is SettingsApp
+            if self.app_instance and isinstance(self.app_instance, SettingsApp):
                 pygame.draw.rect(screen, light_blue_grey, self.rect)
+                # Delegate drawing to SettingsApp
+                self.app_instance.draw(screen.subsurface(self.rect))
+                print("Drawing SettingsApp")  # Debug print
 
-                section_title_y_offset = 20
-                section_title_surface = self.settings_section_title_font.render(
-                    "Фон", True, black)
-                section_title_rect = section_title_surface.get_rect(
-                    topleft=(self.rect.x + 20, self.rect.y + section_title_y_offset))
-                screen.blit(section_title_surface, section_title_rect)
+            elif self.app_instance:  # Draw for generic app instances
+                if hasattr(self.app_instance, 'draw'):  # Check if app has draw method
+                    self.app_instance.draw(screen.subsurface(self.rect))
+                print(f"Drawing Generic App: {self.title}")  # Debug print
 
-                y_offset = section_title_y_offset + section_title_rect.height + 10
-                x_offset_start = self.rect.x + 20
-                option_margin_x = 20
-                option_margin_y = 30
-
-                background_options = ["zovosbg.png",
-                                      "zovosbg2.png", "zovosbg3.png", "color"]
-
-                for option_key in background_options:
-                    preview_image = self.background_previews[option_key]
-                    preview_rect = preview_image.get_rect(
-                        topleft=(x_offset_start, self.rect.y + y_offset))
-                    screen.blit(preview_image, preview_rect)
-
-                    option_rect = pygame.Rect(
-                        preview_rect.x, preview_rect.y, preview_rect.width, preview_rect.height)
-                    self.settings_options_rects[option_key] = option_rect
-                    self.settings_option_positions[option_key] = (
-                        preview_rect.x, preview_rect.y)
-
-                    x_offset_start += preview_rect.width + option_margin_x
-
-            else:
+            else:  # Default white window for text files
                 pygame.draw.rect(screen, white, self.rect)
-                if self.is_banner_window and self.banner_image:
-                    banner_rect = self.banner_image.get_rect(center=self.rect.center)
-                    screen.blit(self.banner_image, banner_rect)
 
-            if self.minigame:
-                self.minigame.draw(screen.subsurface(self.rect))
-            elif self.file and self.file.name.endswith(".txt"):
+            if self.file and self.file.name.endswith(".txt"):
                 y_offset = 10
                 text_content = self.file.content
                 lines = []
@@ -369,15 +367,17 @@ class Window:
                             char_count += len(line_render) + 1
 
                         cursor_x = self.rect.x + 10 + \
-                                   file_font.size(lines[line_num][:char_in_line])[0]
+                            file_font.size(lines[line_num][:char_in_line])[0]
                         cursor_y = self.rect.y + 10 + line_num * \
-                                   (file_font.get_height() + 5)
+                            (file_font.get_height() + 5)
                         pygame.draw.line(screen, black, (cursor_x, cursor_y),
                                          (cursor_x, cursor_y + file_font.get_height()), 2)
             elif self.mail_app:
                 self.mail_app.draw(screen.subsurface(self.rect))
+            # Draw other app instances, but not SettingsApp again
 
-    def handle_event(self, event, windows, taskbar):
+    def handle_event(self, event, windows, taskbar, files, icon_layout_setting):
+        # Removed icon_layout_setting from global declaration
         global background_image, current_background_setting
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -388,6 +388,12 @@ class Window:
                 if self.close_button_rect.collidepoint(event.pos):
                     self.is_open = False
                     taskbar.remove_icon(self.taskbar_icon)
+                    if self.app_thread and self.app_thread.is_alive():
+                        # You might need a way to gracefully stop the thread
+                        # For now, we just let it run until it naturally finishes (if it has a loop that can terminate)
+                        # Проверка наличия метода
+                        if self.app_instance and hasattr(self.app_instance, 'stop_running'):
+                            self.app_instance.stop_running()
                 if self.file and self.file.name.endswith(".txt") and self.rect.collidepoint(event.pos):
                     self.text_input = True
                     self.cursor_visible = True
@@ -406,8 +412,7 @@ class Window:
                     line_text_surface = file_font.render(
                         lines[clicked_line_index], True, black)
                     char_width = line_text_surface.get_width() / max(1,
-                                                                     len(lines[clicked_line_index])) if lines[
-                        clicked_line_index] else file_font.size(" ")[0]
+                                                                     len(lines[clicked_line_index])) if lines[clicked_line_index] else file_font.size(" ")[0]
 
                     clicked_char_index = min(len(lines[clicked_line_index]), max(
                         0, int(click_pos_local_x // char_width)))
@@ -428,20 +433,33 @@ class Window:
                         else:
                             self.selection_end = self.cursor_pos
                     self.held_key = None
-                elif self.file and self.file.name == "Настройки":
-                    for option_key, option_rect in self.settings_options_rects.items():
-                        if option_rect.collidepoint(event.pos):
-                            if option_key == "zovosbg.png":
-                                current_background_setting = "zovosbg.png"
-                            elif option_key == "zovosbg2.png":
-                                current_background_setting = "zovosbg2.png"
-                            elif option_key == "zovosbg3.png":
-                                current_background_setting = "zovosbg3.png"
-                            elif option_key == "color":
-                                current_background_setting = "color"
-                            print(f"Background set to: {current_background_setting}")
+                # Handle settings click events
+                elif self.app_instance and isinstance(self.app_instance, SettingsApp) and self.rect.collidepoint(event.pos):
+                    setting_action = self.app_instance.handle_event(
+                        event.pos, self.rect)
+                    if setting_action:  # If SettingsApp returns a setting change action
+                        if setting_action in ["zovosbg.png", "zovosbg2.png", "zovosbg3.png", "color"]:
+                            current_background_setting = setting_action
                             background_image = get_background_image(
                                 current_background_setting)
+                            # Update background setting in DB
+                            update_setting('background_image',
+                                           current_background_setting)
+                        elif setting_action == 'layout_change':
+                            icon_layout_setting = get_setting(
+                                'icon_layout', 'grid')  # Refresh layout setting
+                            if icon_layout_setting == 'grid':
+                                grid_size = 128 + 20  # Icon size + spacing
+                                for file in files:
+                                    file.rect.topleft = file.get_grid_position(
+                                        grid_size)
+                                    file.name_rect.center = (
+                                        file.rect.centerx, file.rect.bottom + 20)
+                                    file.update_selection_rect()
+
+                elif self.app_instance and not isinstance(self.app_instance, SettingsApp) and self.rect.collidepoint(event.pos):
+                    # No need to handle events for threaded apps here in the OS event loop
+                    pass
 
                 else:
                     self.text_input = False
@@ -467,7 +485,7 @@ class Window:
 
                 self.title_rect.center = self.title_bar.center
                 self.close_button_rect.x = self.title_bar.x + \
-                                           self.title_bar.width - self.close_button_size - 10
+                    self.title_bar.width - self.close_button_size - 10
                 self.close_button_rect.y = self.title_bar.y + 15
             if self.text_input and self.selection_start is not None and pygame.mouse.get_pressed()[0]:
                 if self.rect.collidepoint(event.pos):
@@ -482,8 +500,7 @@ class Window:
                     line_text_surface = file_font.render(
                         lines[clicked_line_index], True, black)
                     char_width = line_text_surface.get_width() / max(1,
-                                                                     len(lines[clicked_line_index])) if lines[
-                        clicked_line_index] else file_font.size(" ")[0]
+                                                                     len(lines[clicked_line_index])) if lines[clicked_line_index] else file_font.size(" ")[0]
                     clicked_char_index = min(len(lines[clicked_line_index]), max(
                         0, int(click_pos_local_x // char_width)))
 
@@ -494,28 +511,23 @@ class Window:
                     self.selection_end = char_count + clicked_char_index
 
         elif event.type == pygame.KEYDOWN and self.text_input and self.file and self.file.name.endswith(".txt"):
-            if event.key not in [pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_CAPSLOCK,
-                                 pygame.K_NUMLOCK]:
+            if event.key not in [pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_CAPSLOCK, pygame.K_NUMLOCK]:
                 self.held_key = event.key
                 self.key_down_time = time.time()
 
             if event.key == pygame.K_LEFT:
                 self.cursor_pos = max(0, self.cursor_pos - 1)
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                           pygame.key.get_pressed()[
-                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                         pygame.key.get_pressed()[
-                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
             elif event.key == pygame.K_RIGHT:
                 self.cursor_pos = min(
                     len(self.file.content), self.cursor_pos + 1)
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                           pygame.key.get_pressed()[
-                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                         pygame.key.get_pressed()[
-                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
             elif event.key == pygame.K_UP:
                 lines = self.file.content.split('\n')
                 current_line_index = 0
@@ -536,12 +548,10 @@ class Window:
                 else:
                     self.cursor_pos = 0
 
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                           pygame.key.get_pressed()[
-                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                         pygame.key.get_pressed()[
-                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
 
             elif event.key == pygame.K_DOWN:
                 lines = self.file.content.split('\n')
@@ -563,48 +573,44 @@ class Window:
                 else:
                     self.cursor_pos = len(self.file.content)
 
-                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                           pygame.key.get_pressed()[
-                                                               pygame.K_RSHIFT]) and self.selection_start is not None else None
-                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or
-                                                         pygame.key.get_pressed()[
-                                                             pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_start = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                           pygame.K_RSHIFT]) and self.selection_start is not None else None
+                self.selection_end = self.cursor_pos if (pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[
+                                                         pygame.K_RSHIFT]) and self.selection_start is not None else None
 
             elif event.key == pygame.K_BACKSPACE:
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.file.content = self.file.content[:start_index] + \
-                                        self.file.content[end_index:]
+                        self.file.content[end_index:]
                     self.cursor_pos = start_index
                     self.selection_start = None
                     self.selection_end = None
                 elif self.cursor_pos > 0:
                     self.file.content = self.file.content[:self.cursor_pos -
-                                                           1] + self.file.content[self.cursor_pos:]
+                                                          1] + self.file.content[self.cursor_pos:]
                     self.cursor_pos -= 1
             elif event.key == pygame.K_DELETE:
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.file.content = self.file.content[:start_index] + \
-                                        self.file.content[end_index:]
+                        self.file.content[end_index:]
                     self.cursor_pos = start_index
                     self.selection_start = None
                     self.selection_end = None
                 elif self.cursor_pos < len(self.file.content):
                     self.file.content = self.file.content[:self.cursor_pos] + \
-                                        self.file.content[self.cursor_pos + 1:]
-            elif (event.key == pygame.K_c and (
-                    pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
+                        self.file.content[self.cursor_pos+1:]
+            elif (event.key == pygame.K_c and (pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
                 if self.selection_start is not None and self.selection_start != self.selection_end:
                     start_index = min(self.selection_start, self.selection_end)
                     end_index = max(self.selection_start, self.selection_end)
                     self.clipboard = self.file.content[start_index:end_index]
-            elif (event.key == pygame.K_v and (
-                    pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
+            elif (event.key == pygame.K_v and (pygame.key.get_pressed()[pygame.K_LCTRL] or pygame.key.get_pressed()[pygame.K_RCTRL])):
                 temp_content = self.file.content[:self.cursor_pos] + \
-                               self.clipboard + self.file.content[self.cursor_pos:]
+                    self.clipboard + self.file.content[self.cursor_pos:]
                 lines = temp_content.split('\n')
                 paste_allowed = True
                 for line in lines:
@@ -614,24 +620,20 @@ class Window:
                 if paste_allowed:
                     self.file.content = temp_content
                     self.cursor_pos += len(self.clipboard)
-                else:
-                    print("Вставка невозможна: превышена максимальная длина строки.")
             elif event.key == pygame.K_RETURN:
                 self.file.content = self.file.content[:self.cursor_pos] + \
-                                    '\n' + self.file.content[self.cursor_pos:]
+                    '\n' + self.file.content[self.cursor_pos:]
                 self.cursor_pos += 1
-            elif event.unicode and file_font.render(self.file.content[:self.cursor_pos] + event.unicode, True,
-                                                    black).get_width() < self.rect.width - 20:
+            elif event.unicode and file_font.render(self.file.content[:self.cursor_pos] + event.unicode, True, black).get_width() < self.rect.width - 20:
                 self.file.content = self.file.content[:self.cursor_pos] + \
-                                    event.unicode + self.file.content[self.cursor_pos:]
+                    event.unicode + self.file.content[self.cursor_pos:]
                 self.cursor_pos += 1
 
             self.cursor_visible = True
             self.cursor_time = time.time()
-        if self.minigame:
-            self.minigame.handle_event(event, windows)
         if self.mail_app:
             self.mail_app.handle_event(event, windows)
+        # No need to handle events for threaded apps here in the OS event loop
 
     def bring_to_front(self, windows):
         if self in windows:
@@ -640,7 +642,7 @@ class Window:
 
 
 class DesktopFile:
-    def __init__(self, name, image_path, x, y, protected=False):
+    def __init__(self, name, image_path, x, y, protected=False, file_type="text", app_module=None, app_class=None):
         self.name = name
         self.original_name = name
         self.image_path = image_path
@@ -651,7 +653,7 @@ class DesktopFile:
                     os.path.join("images", image_path)).convert_alpha()
                 self.image = self.original_image
             except FileNotFoundError:
-                print(f"File image not found: {image_path}, using default.")
+                # Default to txt icon if image not found
                 self.image = self.create_default_txt_icon()
         else:
             self.image = self.create_default_txt_icon()
@@ -678,13 +680,17 @@ class DesktopFile:
             (selection_width, selection_height), pygame.SRCALPHA)
         self.selection_surface.fill(dark_blue)
 
-        # Changed initialization here to negative double_click_interval
         self.last_click_time = 0
         self.double_click_interval = 0.3
         self.is_in_trash = False
         self.protected = protected
+        self.file_type = file_type  # "text", "app" etc.
+        self.app_module = app_module  # Module name for app file
+        self.app_class = app_class  # Class name within the module
 
         self.content = ""
+        self.grid_spacing = 20  # Spacing between grid cells
+        self.icon_size = 128  # Icon size (assuming square 128x128)
 
     def create_default_txt_icon(self):
         image = pygame.Surface((64, 64), pygame.SRCALPHA)
@@ -709,7 +715,25 @@ class DesktopFile:
             if self.selected:
                 screen.blit(self.selection_surface, self.selection_rect)
 
-    def handle_event(self, event, files, windows, context_menu, trash, moving_file_to_front, taskbar):
+    def update_selection_rect(self):
+        padding_x = self.rect.width * 0.10
+        padding_y = self.rect.height * 0.10 + 15
+
+        selection_width = int(self.rect.width + padding_x * 2)
+        selection_height = int(self.rect.height + padding_y * 2)
+
+        selection_x = int(self.rect.left - padding_x)
+        selection_y = int(self.rect.top - padding_y)
+
+        self.selection_rect = pygame.Rect(
+            selection_x, selection_y, selection_width, selection_height)
+
+    def get_grid_position(self, grid_size):
+        grid_x = round(self.rect.x / grid_size) * grid_size
+        grid_y = round(self.rect.y / grid_size) * grid_size
+        return grid_x, grid_y
+
+    def handle_event(self, event, files, windows, context_menu, trash, moving_file_to_front, taskbar, icon_layout_setting):
         if not self.is_in_trash:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
@@ -739,43 +763,27 @@ class DesktopFile:
                             self.selected = False
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
-                    if self.dragging and trash.rect.colliderect(self.rect):
-                        self.is_in_trash = True
-                        files.remove(self)
+                    if self.dragging:
+                        if trash.rect.colliderect(self.rect):
+                            self.is_in_trash = True
+                            files.remove(self)
+                        elif icon_layout_setting == 'grid':
+                            grid_size = self.icon_size + self.grid_spacing
+                            self.rect.topleft = self.get_grid_position(
+                                grid_size)
+                            self.name_rect.center = (
+                                self.rect.centerx, self.rect.bottom + 20)
+                            self.update_selection_rect()
                     self.dragging = False
             elif event.type == pygame.MOUSEMOTION:
                 if self.dragging:
                     self.rect.center = event.pos
                     self.name_rect.center = (
                         self.rect.centerx, self.rect.bottom + 20)
-
-                    padding_x = self.rect.width * 0.10
-                    padding_y = self.rect.height * 0.10
-
-                    selection_x = int(self.rect.left - padding_x)
-                    selection_y = int(self.rect.top - padding_y)
-
-                    self.selection_rect.topleft = (selection_x, selection_y)
+                    self.update_selection_rect()
 
     def open_file(self, files, windows, taskbar):
-        print(f"Открываю файл: {self.name}")
-        if self.name == "ВЯЧ.py":
-            vyach_py_opened = False
-            for window in windows:
-                if window.minigame:
-                    vyach_py_opened = True
-                    break
-            if vyach_py_opened:
-                print("ВЯЧ.py is already running!")
-                return
-            new_window = Window(self.name, 800, 600, 200,
-                                200, file=self)
-            new_window.minigame = Minigame(
-                new_window.rect, game_font, console_font)
-            windows.append(new_window)
-            taskbar.add_icon(new_window.taskbar_icon)
-            new_window.bring_to_front(windows)
-        elif self.name == "Настройки":
+        if self.name.endswith(".txt"):
             if windows:
                 last_window = windows[-1]
                 new_x = last_window.title_bar.x + 30
@@ -792,82 +800,47 @@ class DesktopFile:
             windows.append(new_window)
             taskbar.add_icon(new_window.taskbar_icon)
             new_window.bring_to_front(windows)
-        elif self.name == "Почта":
-            if windows:
-                last_window = windows[-1]
-                new_x = last_window.title_bar.x + 30
-                new_y = last_window.title_bar.y + 30
-                if new_x + 600 > screen_width:
+        elif self.file_type == "port" and self.app_module and self.app_class:
+            try:
+                module = __import__(self.app_module)
+                app_class = getattr(module, self.app_class)
+                app_instance = app_class()
+                print(f"Instantiated app: {self.name}, class: {
+                      self.app_class}")  # Debug print
+                app_width = getattr(app_instance, 'width', 600)
+                app_height = getattr(app_instance, 'height', 400)
+
+                if windows:
+                    last_window = windows[-1]
+                    new_x = last_window.title_bar.x + 30
+                    new_y = last_window.title_bar.y + 30
+                    if new_x + app_width > screen_width:
+                        new_x = 200
+                    if new_y + app_height + 50 > screen_height:
+                        new_y = 200
+                else:
                     new_x = 200
-                if new_y + 400 + 50 > screen_height:
                     new_y = 200
-            else:
-                new_x = 200
-                new_y = 200
 
-            new_window = Window(self.name, 600, 400, new_x, new_y, file=self)
-            new_window.mail_app = MailApp(
-                new_window.rect, game_font, console_font)
-            windows.append(new_window)
-            taskbar.add_icon(new_window.taskbar_icon)
-            new_window.bring_to_front(windows)
-        elif self.name.endswith(".txt"):
-            if windows:
-                last_window = windows[-1]
-                new_x = last_window.title_bar.x + 30
-                new_y = last_window.title_bar.y + 30
-                if new_x + 600 > screen_width:
-                    new_x = 200
-                if new_y + 400 + 50 > screen_height:
-                    new_y = 200
-            else:
-                new_x = 200
-                new_y = 200
+                new_window = Window(self.name, app_width, app_height,
+                                    new_x, new_y, file=self, app_instance=app_instance)
+                windows.append(new_window)
+                taskbar.add_icon(new_window.taskbar_icon)
+                new_window.bring_to_front(windows)
 
-            new_window = Window(self.name, 600, 400, new_x, new_y, file=self)
-            windows.append(new_window)
-            taskbar.add_icon(new_window.taskbar_icon)
-            new_window.bring_to_front(windows)
-        elif self.name == "ВЯЧ (1).py":
-            vyach_py_1_opened = False
-            for window in windows:
-                if window.is_banner_window:
-                    vyach_py_1_opened = True
-                    break
-            if vyach_py_1_opened:
-                print("ВЯЧ (1).py is already running!")
-                return
-            banner_dir = "images/banners"
-            banner_images_paths = [
-                os.path.join(banner_dir, f)
-                for f in os.listdir(banner_dir)
-                if os.path.isfile(os.path.join(banner_dir, f))
-            ]
-            if not banner_images_paths:
-                print(f"No banner images found in '{banner_dir}'")
-                return
+                # Start the application in a separate thread
+                subsurface_rect = new_window.rect
+                new_window.app_thread = threading.Thread(
+                    target=run_app_in_thread, args=(app_instance, subsurface_rect))
+                new_window.app_thread.start()
 
-            def get_random_banner():
-                try:
-                    image_path = random.choice(banner_images_paths)
-                    image = pygame.image.load(image_path).convert_alpha()
-                    return pygame.transform.scale(image, (500, 300))  # Ensure size is 500x300
-                except Exception as e:
-                    print(f"Failed to load banner image: {e}")
-                    return None
-
-            def get_random_position():
-                x = random.randint(0, screen_width - 500)
-
-                y = random.randint(50, screen_height - 300 - taskbar_height - 50)
-                return x, y
-
-            global is_spawning_banners, banner_spawn_timer, banner_spawn_interval, banner_spawn_duration, banner_spawn_end_time
-            is_spawning_banners = True
-            banner_spawn_timer = time.time()
-            banner_spawn_interval = 0.4
-            banner_spawn_duration = 60
-            banner_spawn_end_time = time.time() + banner_spawn_duration
+            except ImportError as e:
+                print(f"Error importing module {self.app_module}: {e}")
+            except AttributeError as e:
+                print(f"Error accessing class {
+                      self.app_class} or methods within module {self.app_module}: {e}")
+            except Exception as e:
+                print(f"Error launching application {self.name}: {e}")
 
 
 class Trash:
@@ -877,7 +850,6 @@ class Trash:
                 os.path.join("images", "musor.png")).convert_alpha()
             self.image = self.original_image
         except FileNotFoundError:
-            print("Trash icon image 'musor.png' not found, using fallback.")
             self.original_image = pygame.Surface((64, 64), pygame.SRCALPHA)
             self.original_image.fill(light_gray)
             self.image = self.original_image
@@ -966,7 +938,7 @@ class ContextMenu:
 
                 if i == self.selected_option:
                     pygame.draw.rect(screen, light_gray, (self.x, self.y +
-                                                          i * self.item_height, self.width, self.item_height))
+                                     i * self.item_height, self.width, self.item_height))
 
                 screen.blit(option_surface, text_rect)
 
@@ -1020,7 +992,7 @@ class ContextMenu:
                     if self.creation_requested:
                         new_file_name = self.file_name_input + ".txt"
                         new_file = DesktopFile(
-                            # "txtfile.png" should be in "images" if needed
+                            # Default icon for new txt file
                             new_file_name, "txtfile.png", self.mouse_x, self.mouse_y)
                         files.append(new_file)
                         new_file.content = ""
@@ -1058,7 +1030,6 @@ class PuskButton:
                 os.path.join("images", self.image_path)).convert_alpha()
             self.image = self.original_image
         except pygame.error as e:
-            print(f"Error loading pusk button image: {self.image_path}, error: {e}")
             self.original_image = pygame.Surface((60, 60))
             self.original_image.fill(light_gray)
             self.image = self.original_image
@@ -1071,7 +1042,7 @@ class PuskButton:
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
-                print("Pusk button clicked!")
+                pass  # Pusk button action can be added here
 
 
 class Taskbar:
@@ -1084,10 +1055,9 @@ class Taskbar:
         self.icon_margin = 10
         self.pusk_button_x = 10
         self.pusk_button_y = screen_height - height + \
-                             (height - 60) // 2
-        self.pusk_button = PuskButton(
-            # "pusk.png" should be in "images"
-            self.pusk_button_x, self.pusk_button_y, "pusk.png")
+            (height - 60) // 2
+        self.pusk_button = PuskButton(  # Correct argument order here
+            self.pusk_button_x, self.pusk_button_y, "pusk.png")  # x, y, image_path
 
     def add_icon(self, icon):
         self.icons.append(icon)
@@ -1100,7 +1070,7 @@ class Taskbar:
         pygame.draw.rect(screen, taskbar_color, self.rect)
         self.pusk_button.draw(screen)
         icon_x = self.pusk_button_x + self.pusk_button.rect.width + \
-                 self.icon_margin
+            self.icon_margin
 
         for icon in self.icons:
             icon.draw(screen, icon_x, self.rect.y +
@@ -1114,7 +1084,7 @@ class Taskbar:
             icon_x = self.pusk_button_x + self.pusk_button.rect.width + self.icon_margin
             for icon in self.icons:
                 icon_rect = pygame.Rect(icon_x, self.rect.y + (
-                        self.rect.height - self.icon_height) // 2, self.icon_width, self.icon_height)
+                    self.rect.height - self.icon_height) // 2, self.icon_width, self.icon_height)
                 if icon_rect.collidepoint(event.pos):
                     icon.window.bring_to_front(windows)
                     break
@@ -1144,7 +1114,6 @@ class TaskbarIcon:
                 self.image = pygame.transform.scale(
                     original_image, (scaled_width, scaled_height))
             except pygame.error as e:
-                print(f"Error loading taskbar icon image: {self.image_path}, error: {e}")
                 self.image = None
 
     def draw(self, screen, x, y):
@@ -1160,14 +1129,25 @@ class TaskbarIcon:
             screen.blit(text_surface, text_rect)
 
 
-files = [DesktopFile("Настройки", "nastoiku.png",  # "nastoiku.png" should be in "images"
-                     1800, 200, protected=True),
-         # "pochta.png" should be in "images"
-         DesktopFile("Почта", "pochta.png", 1800, 350),
-         ]
+files = []
 
-files[
-    1].content = "Это тестовый файл настроек.\nЗдесь могут быть различные параметры. Очень длинная строка без пробелов чтобы проверить перенос по символам и как он будет работать в нашем текстовом редакторе. asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf"
+# "Настройки" is now a portable app
+files.append(DesktopFile(
+    name="Настройки",
+    image_path="settings.png",  # Make sure you have settings_icon.png in images folder
+    x=10, y=10,
+    file_type="port",
+    app_module="settings_app",  # Module name is the filename without .py
+    app_class="SettingsApp"    # Class name inside settings_app.py
+))
+files.append(DesktopFile(
+    name="Pong",
+    image_path="zovpong.png",  # Make sure you have settings_icon.png in images folder
+    x=110, y=10,
+    file_type="port",
+    app_module="pong_app",  # Module name is the filename without .py
+    app_class="MyGameApp"    # Class name inside settings_app.py
+))
 
 trash = Trash(1800, 10)
 
@@ -1176,29 +1156,13 @@ context_menu = None
 running = True
 selected_file = None
 dragging_file = None
-vyach_py_time = None
-second_day_init = False
-black_screen_start_time = 0
-is_spawning_banners = None
-banner_spawn_timer = None
-banner_spawn_interval = None
-banner_spawn_duration = None
-banner_spawn_end_time = None
 
 key_repeat_interval = 0.05
-pending_vyach_message = None  # Global variable to hold pending message
-message_sent = False
-desktop_start_time = None
 key_repeat_timer = 0
 held_keys = set()
 
 taskbar_height = 60
 taskbar = Taskbar(taskbar_height)
-
-
-def save_pending_message_to_file(message):
-    with open("messages.txt", "w") as f:
-        f.write(message)
 
 
 def move_file_to_front(file):
@@ -1225,8 +1189,7 @@ while running:
         if event.type == pygame.KEYUP:
             held_keys.discard(event.key)
             for window in windows:
-                if window.text_input and window.file and window.file.name.endswith(
-                        ".txt") and window.held_key == event.key:
+                if window.text_input and window.file and window.file.name.endswith(".txt") and window.held_key == event.key:
                     window.held_key = None
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1251,10 +1214,11 @@ while running:
         if not (context_menu and context_menu.is_open):
             for file in files:
                 file.handle_event(event, files, windows,
-                                  context_menu, trash, move_file_to_front, taskbar)
+                                  context_menu, trash, move_file_to_front, taskbar, icon_layout_setting)
 
         for window in windows:
-            window.handle_event(event, windows, taskbar)
+            window.handle_event(event, windows, taskbar,
+                                files, icon_layout_setting)
         trash.handle_event(event, files)
         if context_menu is not None and context_menu.is_open:
             context_menu.handle_event(event, files, windows)
@@ -1270,24 +1234,10 @@ while running:
                         unicode_char = pygame.key.name(window.held_key)
                         key_event = pygame.event.Event(
                             pygame.KEYDOWN, key=window.held_key, unicode=unicode_char)
-                        window.handle_event(key_event, windows, taskbar)
+                        window.handle_event(
+                            key_event, windows, taskbar, files, icon_layout_setting)
 
     if show_startup:
-        vyach_py = Window(None, 800, 600, 200,
-                          200, file=None)
-        vyach_py.minigame = Minigame(
-            vyach_py.rect, game_font, console_font)
-        windows.append(vyach_py)
-        if vyach_py.minigame.third_repair_complete and vyach_py.minigame.repair_stage == 3 and not second_day_init:
-            windows.clear()
-            description_font = get_font(font_path, 72)
-            second_day_init = True
-            description_text = """
-2 день разработки
-
-
-5 дней до сдачи проекта
-"""
         current_time = time.time()
         if frame_time == 0:
             frame_time = current_time
@@ -1321,111 +1271,19 @@ while running:
             show_description = True
             description_start_time = pygame.time.get_ticks()
 
-    elif show_description:
-        screen.fill(black)
-        draw_description(screen, description_text, description_font, white)
-        if description_start_time is not None and pygame.time.get_ticks() - description_start_time >= 2500:
-            show_description = False
-            description_start_time = None
-            windows.clear()
-            if desktop_start_time is None:
-                desktop_start_time = time.time()
-
     else:
-        if is_spawning_banners:
-            current_time = time.time()
-            if current_time >= banner_spawn_end_time:
-                is_spawning_banners = False
-                print("Banner spawning завершено.") # Убедитесь, что метод вызывается
-
-            if current_time - banner_spawn_timer >= banner_spawn_interval:
-                banner_dir = "images/banners"
-                banner_images_paths = [
-                    os.path.join(banner_dir, f)
-                    for f in os.listdir(banner_dir)
-                    if os.path.isfile(os.path.join(banner_dir, f))
-                ]
-                def get_random_banner():
-                    try:
-                        image_path = random.choice(banner_images_paths)
-                        image = pygame.image.load(image_path).convert_alpha()
-                        return pygame.transform.scale(image, (500, 300))
-                    except Exception as e:
-                        print(f"Failed to load banner image: {e}")
-                        return None
-                def get_random_position():
-                    x = random.randint(0, screen_width - 500)
-                    y = random.randint(50, screen_height - 300 - taskbar_height - 50)
-                    return x, y
-                pos = get_random_position()
-                banner_image = get_random_banner()
-                if banner_image:
-                    new_window = Window("Banner", 500, 300, pos[0], pos[1], file=None) # No file association for banners
-                    new_window.is_banner_window = True
-                    new_window.banner_image = banner_image
-                    windows.append(new_window)
-                    # No taskbar icon for banner windows
-                banner_spawn_timer = current_time
-        vyach_py_window = None
-        for window in windows:
-            if window.minigame:
-                vyach_py_window = window
-                break
-        if vyach_py_window and vyach_py_window.minigame.third_repair_complete and vyach_py_window.minigame.repair_stage == 3 and not second_day_init:
-            if black_screen_start_time == 0:
-                black_screen_start_time = time.time()
-                screen.fill(black)
-                pygame.display.flip()
-            if time.time() - black_screen_start_time >= 0.5:
-                show_startup = True
-                windows.clear()
-                description_font = get_font(font_path, 72)
-                description_text = """
-2 день разработки
-
-
-5 дней до сдачи проекта
-"""
-                files = [file for file in files if file.name != "ВЯЧ.py"]
-                current_frame = 0
-                frame_time = 0
-                description_start_time = pygame.time.get_ticks()
-                second_day_init = True
-                black_screen_start_time = 0
-
-        if vyach_py_time is None:
-            vyach_py_time = time.time()
         screen.blit(background_image, (0, 0))
 
-        if not message_sent:
-            if time.time() - desktop_start_time >= 5 and not second_day_init:  # 5 seconds after desktop
-                message_sent = True
-                vyach_file = DesktopFile("ВЯЧ.py", "py.png", 100, 100)  # Create file
-                files.append(vyach_file)  # Add file to desktop
-                message_content = f"Сообщение от Вяча:ZvФайл '{vyach_file.name}' был добавлен на рабочий стол."
-                save_pending_message_to_file(message_content)
-                for window in windows:
-                    if window.mail_app:
-                        window.mail_app.receive_message(message_content)  # Send if mail app is open
-                        pending_vyach_message = None  # Clear pending message after sending
-                        break
-                else:
-                    print(f"Сообщение от Вяча: Файл '{vyach_file.name}' был добавлен на рабочий стол.")
-            elif time.time() - desktop_start_time >= 5 and second_day_init:  # 5 seconds after desktop
-                message_sent = True
-                vyach_file = DesktopFile("ВЯЧ (1).py", "py.png", 100, 100)  # Create file
-                files.append(vyach_file)  # Add file to desktop
-                message_content = f"Сообщение от Вяча:ZvФайл '{vyach_file.name}' был добавлен на рабочий стол."
-                save_pending_message_to_file(message_content)
-                for window in windows:
-                    if window.mail_app:
-                        window.mail_app.receive_message(message_content)  # Send if mail app is open
-                        pending_vyach_message = None  # Clear pending message after sending
-                        break
-                else:
-                    print(f"Сообщение от Вяча: Файл '{vyach_file.name}' был добавлен на рабочий стол.")
         trash.draw(screen)
         taskbar.draw(screen)
+
+        # Grid drawing for debugging (optional)
+        if icon_layout_setting == 'grid':
+            grid_size = 128 + 20
+            for x in range(0, screen_width, grid_size):
+                for y in range(0, screen_height-taskbar_height, grid_size):
+                    # Draw grid points
+                    pygame.draw.rect(screen, light_gray, (x, y, 1, 1))
 
         for file in files:
             if file.dragging == False:
@@ -1436,6 +1294,7 @@ while running:
                 file.draw(screen)
 
         for window in windows:
+            # Draw window frame, title bar, close button, and delegate app drawing
             window.draw(screen)
 
         if context_menu is not None and context_menu.is_open:
@@ -1443,6 +1302,11 @@ while running:
 
         windows = [window for window in windows if window.is_open]
         taskbar.icons = [icon for icon in taskbar.icons if icon.window.is_open]
+
+    # Refresh settings every 5 seconds
+    if time.time() - last_settings_refresh_time >= settings_refresh_interval:
+        refresh_settings_from_db(files)
+        last_settings_refresh_time = time.time()
 
     pygame.display.flip()
     clock.tick(fps)
