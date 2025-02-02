@@ -1,5 +1,8 @@
+import base64
 import math
+import os
 import random
+import sqlite3
 
 import pygame
 
@@ -49,6 +52,17 @@ class ApviaApp:
             'bg5': pygame.image.load('images/апвыа/background_textures/bg5.png'),
             'bg6': pygame.image.load('images/апвыа/background_textures/bg6.png'),
             'bg7': pygame.image.load('images/апвыа/background_textures/bg7.png'),
+            'bg9': pygame.image.load('images/апвыа/background_textures/bg9.png'),
+            'bgm1': pygame.image.load('images/апвыа/background_textures/bgm1.png'),
+            'bgm2': pygame.image.load('images/апвыа/background_textures/bgm2.png'),
+            'bgm3': pygame.image.load('images/апвыа/background_textures/bgm3.png'),
+            'bgm4': pygame.image.load('images/апвыа/background_textures/bgm4.png'),
+            'bgm5': pygame.image.load('images/апвыа/background_textures/bgm5.png'),
+            'bgm6': pygame.image.load('images/апвыа/background_textures/bgm6.png'),
+            'bgm7': pygame.image.load('images/апвыа/background_textures/bgm7.png'),
+            'bgm8': pygame.image.load('images/апвыа/background_textures/bgm8.png'),
+            'bgm9': pygame.image.load('images/апвыа/background_textures/bgm9.png'),
+            'bgm10': pygame.image.load('images/апвыа/background_textures/bgm10.png'),
         }
         self.select_sprite = pygame.image.load('images/апвыа/background_textures/select.png')
         self.bg2_sprite = pygame.image.load('images/апвыа/background_textures/bg2_sprite.png')
@@ -58,24 +72,50 @@ class ApviaApp:
         self.bg5_sprite = pygame.image.load('images/апвыа/background_textures/bg5_sprite.png')
         self.bg6_sprite = pygame.image.load('images/апвыа/background_textures/bg6_sprite.png')
         self.bg7_sprite = pygame.image.load('images/апвыа/background_textures/bg7_sprite.png')
+        self.bg9_sprite = pygame.image.load('images/апвыа/background_textures/bg9_sprite.png')
+        self.bgm1_sprite = pygame.image.load('images/апвыа/background_textures/bgm1_sprite.png')
+        self.bgm2_sprite = pygame.image.load('images/апвыа/background_textures/bgm2_sprite.png')
+        self.bgm3_sprite = pygame.image.load('images/апвыа/background_textures/bgm3_sprite.png')
+        self.bgm4_sprite = pygame.image.load('images/апвыа/background_textures/bgm4_sprite.png')
+        self.bgm5_sprite = pygame.image.load('images/апвыа/background_textures/bgm5_sprite.png')
+        self.bgm6_sprite = pygame.image.load('images/апвыа/background_textures/bgm6_sprite.png')
+        self.bgm7_sprite = pygame.image.load('images/апвыа/background_textures/bgm7_sprite.png')
+        self.bgm8_sprite = pygame.image.load('images/апвыа/background_textures/bgm8_sprite.png')
+        self.bgm9_sprite = pygame.image.load('images/апвыа/background_textures/bgm9_sprite.png')
+        self.bgm10_sprite = pygame.image.load('images/апвыа/background_textures/bgm10_sprite.png')
         self.bg4_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg4_lock.png')
         self.bg1_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg1_lock.png')
         self.bg3_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg3_lock.png')
         self.bg5_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg5_lock.png')
         self.bg6_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg6_lock.png')
         self.bg7_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg7_lock.png')
+        self.bg9_lock_sprite = pygame.image.load('images/апвыа/background_textures/bg9_lock.png')
+        self.bgm1_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm1_lock.png')
+        self.bgm2_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm2_lock.png')
+        self.bgm3_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm3_lock.png')
+        self.bgm4_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm4_lock.png')
+        self.bgm5_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm5_lock.png')
+        self.bgm6_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm6_lock.png')
+        self.bgm7_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm7_lock.png')
+        self.bgm8_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm8_lock.png')
+        self.bgm9_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm9_lock.png')
+        self.bgm10_lock_sprite = pygame.image.load('images/апвыа/background_textures/bgm10_lock.png')
         self.text_bg_sprite = pygame.image.load('images/апвыа/background_textures/text_bg.png')
 
         self.blue_point_texture = pygame.image.load('images/апвыа/sprites/blue.png')
         self.orange_point_texture = pygame.image.load('images/апвыа/sprites/orange.png')
         self.purple_point_texture = pygame.image.load('images/апвыа/sprites/purple.png')
         self.black_point_texture = pygame.image.load('images/апвыа/sprites/black.png')
-        self.green_point_texture = pygame.image.load('images/апвыа/sprites/green.png') # already loaded, no need to load again for money display
+        self.green_point_texture = pygame.image.load(
+            'images/апвыа/sprites/green.png')  # already loaded, no need to load again for money display
 
         self.selected_background = 'bg2'
         self.progress = []
-        self.load_progress()
-        self.load_background()
+        self.purchased_backgrounds = self.load_purchased_backgrounds()
+
+        self.db_conn = sqlite3.connect('results.db')
+        self.db_cursor = self.db_conn.cursor()
+        self._create_tables()
 
         self.ball_radius = 20
         self.green_point_radius = 10
@@ -112,9 +152,31 @@ class ApviaApp:
         self.last_time = 0
 
         self.money = 0
-        self.load_money()
 
         self._layout_buttons()
+
+        self.load_progress_from_db()  # Load progress from DB
+        self.load_background_from_db()  # Load background from DB
+        self.load_money_from_db()  # Load money from DB
+
+    def _create_tables(self):
+        self.db_cursor.execute('''
+            CREATE TABLE IF NOT EXISTS game (
+                game_mode TEXT,
+                result TEXT,
+                collected_points INTEGER,
+                time INTEGER,
+                difficulty TEXT
+            )
+        ''')
+        self.db_cursor.execute('''
+            CREATE TABLE IF NOT EXISTS info (
+                id INTEGER PRIMARY KEY,
+                money INTEGER,
+                last_bg TEXT
+            )
+        ''')
+        self.db_conn.commit()
 
     def _layout_buttons(self):
         button_width = 300
@@ -159,31 +221,49 @@ class ApviaApp:
 
         button_width = 100
         button_height = 100
-        start_x = self.width // 2 - (4 * button_width + 3 * 40) // 2 + button_width // 2 - 115
-        start_y = self.height // 2 - button_height // 2 + 70
+        start_x = 80  # Adjusted for more backgrounds
+        start_y = self.height // 2  # Adjusted start_y
         margin_x = 30
         row_margin_y = 15
 
-        bg_options = ['bg2', 'bg4', 'bg1', 'bg3', 'bg6', 'bg5', 'bg7']
-        bg_sprites = [self.bg2_sprite, self.bg4_sprite, self.bg1_sprite, self.bg3_sprite, self.bg6_sprite, self.bg5_sprite, self.bg7_sprite]
-        bg_lock_sprites = [None, self.bg4_lock_sprite, self.bg1_lock_sprite, self.bg3_lock_sprite, self.bg6_lock_sprite, self.bg5_lock_sprite, self.bg7_lock_sprite]
-        unlock_difficulties = [None, "Очень легко", "Легко", "Нормально", "Тяжело", "Безумно", "Невозможно"]
-        is_unlocked = [True] + [False] * (len(bg_options) - 1) # bg2 is always unlocked
+        bg_options = ['bg2', 'bg4', 'bg1', 'bg3', 'bg6', 'bg5', 'bg7', 'bg9', 'bgm1', 'bgm2', 'bgm3', 'bgm4', 'bgm5',
+                      'bgm6', 'bgm7', 'bgm8', 'bgm9', 'bgm10']
+        bg_sprites = [self.bg2_sprite, self.bg4_sprite, self.bg1_sprite, self.bg3_sprite, self.bg6_sprite,
+                      self.bg5_sprite, self.bg7_sprite, self.bg9_sprite,
+                      self.bgm1_sprite, self.bgm2_sprite, self.bgm3_sprite, self.bgm4_sprite, self.bgm5_sprite,
+                      self.bgm6_sprite, self.bgm7_sprite, self.bgm8_sprite, self.bgm9_sprite, self.bgm10_sprite]
+        bg_lock_sprites = [None, self.bg4_lock_sprite, self.bg1_lock_sprite, self.bg3_lock_sprite, self.bg6_lock_sprite,
+                           self.bg5_lock_sprite, self.bg7_lock_sprite, self.bg9_lock_sprite,
+                           self.bgm1_lock_sprite, self.bgm2_lock_sprite, self.bgm3_lock_sprite, self.bgm4_lock_sprite,
+                           self.bgm5_lock_sprite, self.bgm6_lock_sprite, self.bgm7_lock_sprite, self.bgm8_lock_sprite,
+                           self.bgm9_lock_sprite, self.bgm10_lock_sprite]
+        unlock_difficulties = [None, "Очень легко", "Легко", "Нормально", "Тяжело", "Безумно", "Невозможно", None] + [
+            None] * 10  # unlock difficulties for bg4-bg9, bgm backgrounds are bought
+        is_unlocked = [True] + [False] * (len(bg_options) - 1)  # bg2 is always unlocked
+        bgm_costs = {'bgm1': 100, 'bgm2': 200, 'bgm3': 200, 'bgm4': 400, 'bgm5': 400, 'bgm6': 666, 'bgm7': 666,
+                     'bgm8': 666, 'bgm9': 1000, 'bgm10': 2000}
 
-        for i in range(1, len(bg_options)): # Check unlock status for bg4, bg1, bg3, bg6, bg5, bg7
+        for i in range(1, len(bg_options)):  # Check unlock status for bg4, bg1, bg3, bg6, bg5, bg7, bg9
             if unlock_difficulties[i] in self.progress:
+                is_unlocked[i] = True
+            if bg_options[i] == 'bg9' and self.is_bg9_unlocked():  # Check bg9 unlock condition
+                is_unlocked[i] = True
+            if bg_options[i] in self.purchased_backgrounds:  # Check if bgm is purchased
                 is_unlocked[i] = True
 
         for i in range(len(bg_options)):
             rect = pygame.Rect(0, 0, button_width, button_height)
             rect.center = (start_x, start_y)
             sprite_to_use = bg_sprites[i] if is_unlocked[i] else bg_lock_sprites[i]
-            self.customization_button_rects.append((rect, bg_options[i], sprite_to_use, is_unlocked[i]))
+            lock_sprite_to_use = bg_lock_sprites[i] if not is_unlocked[i] else None  # Use lock sprite only if locked
+            cost = bgm_costs.get(bg_options[i], None) if bg_options[i].startswith('bgm') and not is_unlocked[
+                i] else None  # Get cost if bgm and locked
+            self.customization_button_rects.append(
+                (rect, bg_options[i], sprite_to_use, is_unlocked[i], lock_sprite_to_use, cost))
             start_x += button_width + margin_x
-            if start_x > 780: # move to next row
-                start_x = self.width // 2 - (4 * button_width + 3 * 40) // 2 + button_width // 2 - 115
-                start_y += button_height + row_margin_y # move start_y to next row
-
+            if start_x > 780:  # move to next row
+                start_x = 80  # Adjusted start_x for new row
+                start_y += button_height + row_margin_y  # move start_y to next row
 
         back_button_width = 150
         back_button_height = 50
@@ -205,7 +285,7 @@ class ApviaApp:
                 else:
                     self.draw_text(screen_surface, button_text, self.font, self.text_color, rect.center, 'center')
                 self.draw_rect(screen_surface, self.black, rect, 1)
-            self.draw_money_display(screen_surface) # Display money in main menu
+            self.draw_money_display(screen_surface)  # Display money in main menu
         elif self.current_screen == "difficulty_menu":
             for rect_button in self.difficulty_button_rects:
                 rect = rect_button[0]
@@ -227,7 +307,11 @@ class ApviaApp:
                 bg_name = rect_button[1]
                 bg_sprite = rect_button[2]
                 is_unlocked = rect_button[3]
+                lock_sprite = rect_button[4]
+                cost = rect_button[5]
                 screen_surface.blit(bg_sprite, rect.topleft)
+                if not is_unlocked and lock_sprite:  # Draw lock if locked
+                    screen_surface.blit(lock_sprite, rect.topleft)
                 if self.selected_background == bg_name and is_unlocked:
                     screen_surface.blit(self.select_sprite, rect.topleft)
 
@@ -237,7 +321,7 @@ class ApviaApp:
                 self.draw_rect(screen_surface, self.button_border_color, rect, 3)
                 self.draw_text(screen_surface, button_text, self.small_font, self.text_color, rect.center, 'center')
                 self.draw_rect(screen_surface, self.black, rect, 1)
-            self.draw_money_display(screen_surface) # Display money in customization menu
+            self.draw_money_display(screen_surface)  # Display money in customization menu
         elif self.current_screen == "game" or self.current_screen == "infinite_game":
             if not self.game_over and not self.game_won:
                 self.draw_elements(screen_surface)
@@ -288,9 +372,21 @@ class ApviaApp:
                     rect = rect_button[0]
                     bg_name = rect_button[1]
                     is_unlocked = rect_button[3]
-                    if rect.collidepoint(relative_mouse_pos) and is_unlocked:
-                        self.select_background(bg_name)
-                        return "background_selected"
+                    lock_sprite = rect_button[4]
+                    cost = rect_button[5]
+                    if rect.collidepoint(relative_mouse_pos):
+                        if is_unlocked:
+                            self.select_background(bg_name)
+                            return "background_selected"
+                        elif lock_sprite and cost is not None and self.money >= cost:  # Purchase bgm background
+                            self.money -= cost
+                            self.save_money_to_db()
+                            self.purchased_backgrounds.add(bg_name)
+                            self.save_purchased_backgrounds()
+                            self.select_background(bg_name)
+                            self._layout_customization_buttons()  # Re-layout to update button states
+                            return "background_purchased"
+
                 if self.back_button_rect:
                     rect, button_text = self.back_button_rect
                     if rect.collidepoint(relative_mouse_pos):
@@ -366,13 +462,13 @@ class ApviaApp:
     def select_background(self, bg_name):
         if bg_name in self.backgrounds:
             self.selected_background = bg_name
-            self.save_background()
+            self.save_background_to_db()  # Save to DB
 
     def start_game(self):
         self._start_new_game("game")
 
     def start_infinite_game(self):
-        self._start_new_game("game") # Using "game" screen for infinite too, logic will differ in win/lose conditions
+        self._start_new_game("game")  # Using "game" screen for infinite too, logic will differ in win/lose conditions
         self.required_points = float('inf')
         self.ball_upper = 1.25
         self.blue_ball_speed = 360
@@ -411,40 +507,110 @@ class ApviaApp:
         elif self.current_difficulty_name == 'Невозможно':
             self.ball_upper = 1
 
-    def load_progress(self):
+    def load_progress_from_db(self):
+        self.progress = []
         try:
-            with open('progress.txt', 'r') as file:
-                self.progress = [line.strip() for line in file.readlines()] # Read each line and strip whitespace
-        except FileNotFoundError:
+            self.db_cursor.execute('''
+                SELECT DISTINCT difficulty FROM game
+                WHERE game_mode = 'main_game' AND result = 'win'
+            ''')
+            rows = self.db_cursor.fetchall()
+            self.progress = [row[0] for row in rows]
+        except sqlite3.Error as e:
+            print(f"Database error while loading progress: {e}")
             self.progress = []
 
-    def save_progress(self):
-        with open('progress.txt', 'w') as file:
-            file.write('\n'.join(self.progress))
-
-    def save_background(self):
-        with open('saving_session.txt', 'w') as file:
-            file.write(self.selected_background)
-
-    def load_background(self):
+    def save_game_result_to_db(self, game_mode, result, collected_points, time_elapsed, difficulty=None):
         try:
-            with open('saving_session.txt', 'r') as file:
-                self.selected_background = file.read().strip()
-        except FileNotFoundError:
+            self.db_cursor.execute('''
+                INSERT INTO game (game_mode, result, collected_points, time, difficulty)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (game_mode, result, collected_points, time_elapsed, difficulty))
+            self.db_conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error while saving game result: {e}")
+
+    def save_background_to_db(self):
+        try:
+            self.db_cursor.execute('''
+                INSERT OR REPLACE INTO info (id, last_bg, money)
+                VALUES (1, ?, COALESCE((SELECT money FROM info WHERE id = 1), 0))
+            ''', (self.selected_background,))
+            self.db_conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error while saving background: {e}")
+
+    def load_background_from_db(self):
+        try:
+            self.db_cursor.execute('''
+                SELECT last_bg FROM info WHERE id = 1
+            ''')
+            row = self.db_cursor.fetchone()
+            if row:
+                self.selected_background = row[0]
+            else:
+                self.selected_background = 'bg2'  # Default background if no data
+        except sqlite3.Error as e:
+            print(f"Database error while loading background: {e}")
             self.selected_background = 'bg2'
 
-    def load_money(self):
+    def load_money_from_db(self):
         try:
-            with open('money.txt', 'r') as file:
-                self.money = int(file.read().strip())
-        except FileNotFoundError:
-            self.money = 0
-        except ValueError: # Handle cases where money.txt is empty or has invalid content
+            self.db_cursor.execute('''
+                SELECT money FROM info WHERE id = 1
+            ''')
+            row = self.db_cursor.fetchone()
+            if row and row[0] is not None:
+                self.money = int(row[0])
+            else:
+                self.money = 0  # Default money if no data or None value
+        except sqlite3.Error as e:
+            print(f"Database error while loading money: {e}")
             self.money = 0
 
-    def save_money(self):
-        with open('money.txt', 'w') as file:
-            file.write(str(self.money))
+    def save_money_to_db(self):
+        try:
+            self.db_cursor.execute('''
+                INSERT OR REPLACE INTO info (id, money, last_bg)
+                VALUES (1, ?, COALESCE((SELECT last_bg FROM info WHERE id = 1), 'bg2'))
+            ''', (self.money,))
+            self.db_conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error while saving money: {e}")
+
+    def is_bg9_unlocked(self):
+        try:
+            self.db_cursor.execute('''
+                SELECT 1 FROM game
+                WHERE game_mode = 'infinite_game' AND collected_points > 50
+            ''')
+            row = self.db_cursor.fetchone()
+            return row is not None
+        except sqlite3.Error as e:
+            print(f"Database error checking bg9 unlock: {e}")
+            return False
+
+    def load_purchased_backgrounds(self):
+        try:
+            if os.path.exists('buyed_bgs.txt'):
+                with open('buyed_bgs.txt', 'r') as f:
+                    encoded_data = f.read()
+                    if encoded_data:
+                        decoded_data = base64.b64decode(encoded_data).decode('utf-8')
+                        return set(decoded_data.split(',')) if decoded_data else set()
+            return set()
+        except Exception as e:
+            print(f"Error loading purchased backgrounds: {e}")
+            return set()
+
+    def save_purchased_backgrounds(self):
+        try:
+            backgrounds_str = ','.join(self.purchased_backgrounds)
+            encoded_data = base64.b64encode(backgrounds_str.encode('utf-8')).decode('utf-8')
+            with open('buyed_bgs.txt', 'w') as f:
+                f.write(encoded_data)
+        except Exception as e:
+            print(f"Error saving purchased backgrounds: {e}")
 
     def get_difficulty_bonus(self):
         difficulty_bonuses = {
@@ -455,7 +621,7 @@ class ApviaApp:
             "Безумно": 20,
             "Невозможно": 30
         }
-        return difficulty_bonuses.get(self.current_difficulty_name, 0) # Default to 0 if difficulty is not found
+        return difficulty_bonuses.get(self.current_difficulty_name, 0)  # Default to 0 if difficulty is not found
 
     def update_red_ball(self, delta_time):
         keys = pygame.key.get_pressed()
@@ -554,10 +720,19 @@ class ApviaApp:
         if math.hypot(self.red_ball_x - self.blue_ball_x,
                       self.red_ball_y - self.blue_ball_y) < 2 * self.ball_radius and not self.black_point_taken:
             self.game_over = True
-            if self.current_game_mode == "infinite_game": # Award money on game over in infinite mode
+            if self.current_game_mode == "infinite_game":  # Award money on game over in infinite mode
                 money_earned = self.collected_points
                 self.money += money_earned
-                self.save_money()
+                self.save_money_to_db()  # Save money to DB
+            if self.current_game_mode == 'infinite_game':
+                game_result = 'lose'
+            else:
+                game_result = 'lose'
+            time_elapsed_seconds = (pygame.time.get_ticks() - self.start_time) // 1000  # in seconds
+            difficulty_for_save = self.current_difficulty_name if self.current_game_mode == 'main_game' else None
+            self.save_game_result_to_db(self.current_game_mode, game_result, self.collected_points,
+                                        time_elapsed_seconds, difficulty_for_save)
+
         elif math.hypot(self.red_ball_x - self.blue_ball_x,
                         self.red_ball_y - self.blue_ball_y) < 2 * self.ball_radius and self.black_point_taken:
             self.black_point_taken = False
@@ -567,15 +742,21 @@ class ApviaApp:
     def check_game_won(self):
         if self.collected_points >= self.required_points and self.current_game_mode == "main_game":  # Only check win in main game
             self.game_won = True
-            self.progress.append(self.current_difficulty_name)
+            if self.current_difficulty_name not in self.progress:  # Prevent duplicates
+                self.progress.append(self.current_difficulty_name)
+                self.load_progress_from_db()  # Refresh progress from DB
             if not self.game_saved:
-                self.save_progress()
+                # save_progress is no longer needed, progress is updated directly in self.progress and loaded from db
                 self.game_saved = True
             if self.money_earning:
-                money_earned = self.collected_points + self.get_difficulty_bonus() # Award money on win in main mode
+                money_earned = self.collected_points + self.get_difficulty_bonus()  # Award money on win in main mode
                 self.money += money_earned
-                self.save_money()
+                self.save_money_to_db()  # Save money to DB
                 self.money_earning = False
+
+            time_elapsed_seconds = (pygame.time.get_ticks() - self.start_time) // 1000  # in seconds
+            self.save_game_result_to_db(self.current_game_mode, 'win', self.collected_points, time_elapsed_seconds,
+                                        self.current_difficulty_name)
 
     def spawn_special_points(self, current_time):
         if self.special_respawn_time == 0:
@@ -648,11 +829,12 @@ class ApviaApp:
 
     def draw_money_display(self, surface):
         money_text_surface = self.score_font.render(str(self.money), True, self.green_color)
-        money_text_rect = money_text_surface.get_rect(topright=(self.width - 40, 10)) # Position text to the left of sprite
+        money_text_rect = money_text_surface.get_rect(
+            topright=(self.width - 40, 10))  # Position text to the left of sprite
         surface.blit(money_text_surface, money_text_rect)
-        money_sprite_rect = self.green_point_texture.get_rect(topright=(self.width - 10, 15)) # Position sprite to the right of text
+        money_sprite_rect = self.green_point_texture.get_rect(
+            topright=(self.width - 10, 15))  # Position sprite to the right of text
         surface.blit(self.green_point_texture, money_sprite_rect)
-
 
     @property
     def app_width(self):
@@ -670,3 +852,10 @@ class ApviaApp:
         text_rect = text_surface.get_rect(**{alignment: position})
         surface.blit(text_surface, text_rect)
         return text_rect
+
+    def close_db_connection(self):
+        if self.db_conn:
+            self.db_conn.close()
+
+    def __del__(self):
+        self.close_db_connection()

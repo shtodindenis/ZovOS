@@ -10,6 +10,8 @@ window_color = white
 text_color = black
 selection_color = (200, 200, 200)
 ribbon_color = (220, 220, 220)
+inactive_cell_color = (240, 240, 240)  # Light grey for inactive cells
+error_cell_color = (255, 200, 200) # Light red for error cells
 font_path = "main_font.otf"  # Assuming this font exists, if not, use a system font
 ztext_font = pygame.font.Font(font_path, 24) if font_path and pygame.font.match_font(
     font_path) else pygame.font.SysFont(None, 24)
@@ -29,7 +31,7 @@ def draw_text(surface, text, font, color, position, alignment='topleft'):
 
 
 class Cell:
-    def __init__(self, rect, text=""):
+    def __init__(self, rect, text="", name="", is_active=True, cell_type=""):
         self.rect = rect
         self.text = text
         self.is_editing = False
@@ -39,6 +41,10 @@ class Cell:
         self.font = ztable_cell_font
         self.text_color = black
         self.char_limit_per_line = 15
+        self.name = name  # Cell identifier, e.g., "A1", "B2", "1", "A"
+        self.is_active = is_active  # Flag to determine if cell is editable
+        self.cell_type = cell_type # 'header', 'name', 'type', 'data', 'inactive'
+        self.valid_data = True # Flag to indicate if data in cell is valid for its type
 
         self.selection_start = None
         self.selection_end = None
@@ -63,7 +69,12 @@ class Cell:
         return len(self.text)
 
     def draw(self, surface):
-        draw_rect(surface, white, self.rect)
+        if not self.is_active:
+            draw_rect(surface, inactive_cell_color, self.rect)  # Draw inactive cell background
+        elif not self.valid_data:
+            draw_rect(surface, error_cell_color, self.rect) # Draw error cell background
+        else:
+            draw_rect(surface, white, self.rect)  # Draw white background for active cells
         draw_rect(surface, black, self.rect, 1)
 
         lines = []
@@ -105,7 +116,7 @@ class Cell:
             y_offset += self.font.get_height()
             char_index += len(line) + 1
 
-        if self.is_editing:
+        if self.is_editing and self.is_active:  # Only draw cursor if editing and cell is active
             if time.time() - self.cursor_time > 0.5:
                 self.cursor_visible = not self.cursor_visible
                 self.cursor_time = time.time()
@@ -127,8 +138,14 @@ class Cell:
                 pygame.draw.line(surface, self.text_color, (cursor_x, cursor_y),
                                  (cursor_x, cursor_y + self.font.get_height()), 1)
 
-    def handle_input(self, event):
-        if not self.is_editing:
+    def set_text(self, new_text):
+        self.text = new_text
+        self.cursor_pos = len(new_text)
+        self.selection_start = None
+        self.selection_end = None
+
+    def handle_input(self, event, data_type=None): # Added data_type for validation
+        if not self.is_editing or not self.is_active:  # Do not handle input if not editing or not active
             return False
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -165,6 +182,7 @@ class Cell:
                 return True
 
         if event.type == pygame.KEYDOWN:
+            original_text = self.text # Store original text for validation rollback
             if self.selection_start is not None and self.selection_end is not None:
                 sel_start = min(self.selection_start, self.selection_end)
                 sel_end = max(self.selection_start, self.selection_end)
@@ -255,6 +273,30 @@ class Cell:
                     self.cursor_pos += 1
                     self.selection_start = None
                     self.selection_end = None
+
+            # Data Validation Logic
+            if data_type:
+                if data_type == 'int':
+                    try:
+                        if self.text: # Allow empty string
+                            int(self.text)
+                        self.valid_data = True
+                    except ValueError:
+                        self.valid_data = False
+                        self.text = original_text # Revert to original text if invalid
+                        self.cursor_pos = len(self.text) # Reset cursor position
+                elif data_type == 'bool':
+                    if self.text in ['0', '1', '']: # Only allow 0, 1, or empty string
+                        self.valid_data = True
+                    else:
+                        self.valid_data = False
+                        self.text = original_text # Revert to original text if invalid
+                        self.cursor_pos = len(self.text) # Reset cursor position
+                else: # For 'str' or None, always valid
+                    self.valid_data = True
+            else:
+                self.valid_data = True
+
 
             self.cursor_visible = True
             self.cursor_time = time.time()
@@ -910,8 +952,8 @@ class ZTableApp:
     def __init__(self):
         self.width = 800
         self.height = 600
-        self.rows = 20
-        self.cols = 10
+        self.rows = 20  # 19 active rows + 1 header row
+        self.cols = 10  # 9 active cols + 1 header col
         self.cells = []
         self.cell_width = self.width // self.cols
         self.cell_height = self.height // self.rows
@@ -923,26 +965,102 @@ class ZTableApp:
         for row in range(self.rows):
             for col in range(self.cols):
                 rect = pygame.Rect(col * self.cell_width, row * self.cell_height, self.cell_width, self.cell_height)
-                self.cells.append(Cell(rect))
+                cell_name = ""
+                is_active = True
+                cell_text = ""
+
+                if row == 0 and col == 0:  # Top-left cell, inactive, no text
+                    is_active = False
+                elif row == 0:  # Header row (A, B, C...)
+                    cell_name = chr(ord('A') + col - 1) if col > 0 else ""  # Start from A for col 1
+                    is_active = False
+                    cell_text = cell_name
+                elif col == 0:  # Header column (1, 2, 3...)
+                    cell_name = str(row)
+                    is_active = False
+                    cell_text = cell_name
+                else:  # Active cells (A1, B2...)
+                    cell_name = chr(ord('A') + col - 1) + str(row)
+
+                self.cells.append(Cell(rect, cell_text, cell_name, is_active))
 
     def draw(self, screen_surface):
         draw_rect(screen_surface, window_color, screen_surface.get_rect())
         for cell in self.cells:
             cell.draw(screen_surface)
 
+    def get_cell_index(self, cell):
+        try:
+            return self.cells.index(cell)
+        except ValueError:
+            return -1
+
+    def get_cell_from_index(self, index):
+        if 0 <= index < len(self.cells):
+            return self.cells[index]
+        return None
+
+    def get_cell_from_click(self, pos):
+        for cell in self.cells:
+            if cell.rect.collidepoint(pos):
+                return cell
+        return None
+
     def handle_event(self, event, window_rect):
-        if self.active_cell and self.active_cell.is_editing:
+        if event.type == pygame.KEYDOWN:
+            if self.active_cell:
+                if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_TAB, pygame.K_RETURN]:
+                    current_cell_index = self.get_cell_index(self.active_cell)
+                    if current_cell_index != -1:
+                        row_index = current_cell_index // self.cols
+                        col_index = current_cell_index % self.cols
+                        next_cell_index = current_cell_index
+
+                        if event.key == pygame.K_UP:
+                            next_row_index = max(1, row_index - 1)  # Stay within active rows, skip header row
+                            next_cell_index = next_row_index * self.cols + col_index
+                        elif event.key == pygame.K_DOWN:
+                            next_row_index = min(self.rows - 1, row_index + 1)
+                            next_cell_index = next_row_index * self.cols + col_index
+                        elif event.key == pygame.K_TAB:
+                            next_col_index = col_index + 1
+                            if next_col_index >= self.cols:
+                                next_col_index = 1 # Wrap to first active column
+                                next_row_index = min(self.rows - 1, row_index + 1) # Move to next row
+                                if next_row_index >= self.rows:
+                                    next_row_index = 1 # Wrap to first active row
+                                next_cell_index = next_row_index * self.cols + next_col_index
+                            else:
+                                next_cell_index = row_index * self.cols + next_col_index
+                        elif event.key == pygame.K_RETURN:
+                            next_row_index = row_index + 1
+                            if next_row_index >= self.rows:
+                                next_row_index = 1 # Wrap to first active row
+                                next_col_index = min(self.cols - 1, col_index + 1) # Move to next column
+                                if next_col_index >= self.cols:
+                                    next_col_index = 1 # Wrap to first active column
+                                next_cell_index = next_row_index * self.cols + next_col_index
+
+                            else:
+                                next_cell_index = next_row_index * self.cols + col_index
+
+                        next_cell = self.get_cell_from_index(next_cell_index)
+                        if next_cell and next_cell.is_active:
+                            self.active_cell.is_editing = False
+                            self.active_cell.selection_start = None
+                            self.active_cell.selection_end = None
+                            self.active_cell = next_cell
+                            self.active_cell.is_editing = True
+                            return True # ZTableApp handled the KEYDOWN event
+
+        if self.active_cell and self.active_cell.is_editing: # Check for active_cell.is_editing AFTER ZTableApp key handling
             if self.active_cell.handle_input(event):
-                return True
+                return True # Cell handled the event
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse_pos_global = event.pos
             mouse_pos_relative = (mouse_pos_global[0] - window_rect.x, mouse_pos_global[1] - window_rect.y)
-            clicked_cell = None
-            for cell in self.cells:
-                if cell.rect.collidepoint(mouse_pos_relative):
-                    clicked_cell = cell
-                    break
+            clicked_cell = self.get_cell_from_click(mouse_pos_relative)
 
             if clicked_cell:
                 if self.active_cell and self.active_cell != clicked_cell:
@@ -950,26 +1068,305 @@ class ZTableApp:
                     self.active_cell.selection_start = None
                     self.active_cell.selection_end = None
                 self.active_cell = clicked_cell
-                self.active_cell.is_editing = True
-                return self.active_cell.handle_input(event)
+                if self.active_cell.is_active:  # Only allow editing if cell is active
+                    self.active_cell.is_editing = True
+                    return self.active_cell.handle_input(event)
             else:
                 if self.active_cell:
                     self.active_cell.is_editing = False
                     self.active_cell.selection_start = None
                     self.active_cell.selection_end = None
-        return False
+        return False # No event handled
 
 
-class ZDBApp(ZTableApp):
+class ZDBApp:
     def __init__(self):
-        super().__init__()
         self.width = 800
         self.height = 600
+        self.rows = 20  # 19 active rows + 1 header row
+        self.cols = 10  # 9 active cols + 1 header col
+        self.cells = []
+        self.ribbon_height = 50
+        self.cell_height = (self.height - self.ribbon_height) // self.rows if self.rows > 0 else self.height # Calculate cell height based on available space
+        self.cell_width = self.width // self.cols
+        self.active_cell = None
+        self.mode = "structure"  # Default mode is structure
+        self.db_structure = [] # List of dictionaries, e.g., [{'id': 1, 'name': 'field1', 'type': 'str'}, ...]
+        self.db_data = {} # Dictionary to hold data, keys are field names
+        self.ribbon_color = ribbon_color
+        self.ribbon_buttons = {}
+        self.init_ribbon_buttons()
+        self._init_db_structure() # Initialize default structure
+        self._create_cells()
+
+    def init_ribbon_buttons(self):
+        x_offset = 10
+        y_offset = 10
+        self.ribbon_buttons['structure_mode_rect'] = pygame.Rect(x_offset, y_offset, 100, 30)
+        x_offset += 100 + 10
+        self.ribbon_buttons['data_mode_rect'] = pygame.Rect(x_offset, y_offset, 100, 30)
+
+    def _init_db_structure(self):
+        for i in range(1, 10): # Initialize 9 rows of structure
+            self.db_structure.append({'id': i, 'name': '', 'type': 'str'})
+
+    def _create_cells(self):
+        self.cells = []
+        if self.mode == "structure":
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    rect = pygame.Rect(col * self.cell_width, row * self.cell_height + self.ribbon_height, self.cell_width, self.cell_height) # Cells start below ribbon
+                    cell_name = ""
+                    is_active = False
+                    cell_text = ""
+                    cell_type = "inactive"
+
+                    if row == 0 and col == 0:  # Top-left cell, inactive, no text
+                        is_active = False
+                        cell_type = "inactive"
+                        cell_text = "id"
+                    elif row == 0 and col == 1:  # Header "Имя"
+                        is_active = False
+                        cell_type = "header"
+                        cell_text = "Имя"
+                    elif row == 0 and col == 2:  # Header "Тип"
+                        is_active = False
+                        cell_type = "header"
+                        cell_text = "Тип"
+                    elif row > 0 and row <= 9 and col == 0: # ID column (1-9) in structure mode
+                        is_active = False
+                        cell_type = "id"
+                        cell_text = str(row)
+                    elif row > 0 and row <= 9 and col == 1: # Name column in structure mode
+                        is_active = True
+                        cell_type = "name"
+                        cell_text = self.db_structure[row-1]['name'] # Load from db_structure
+                    elif row > 0 and row <= 9 and col == 2: # Type column in structure mode
+                        is_active = True
+                        cell_type = "type"
+                        cell_text = self.db_structure[row-1]['type'] # Load from db_structure
+                    else: # Inactive cells in structure mode
+                        is_active = False
+                        cell_type = "inactive"
+
+                    self.cells.append(Cell(rect, cell_text, cell_name, is_active, cell_type))
+
+        elif self.mode == "data":
+            column_names = [field['name'] for field in self.db_structure if field['name']] # Get names from structure
+            num_cols = len(column_names) + 1 # +1 for row numbers
+
+            self.cols = num_cols if num_cols > 0 else 1 # At least one column if no names
+            self.cell_width = self.width // self.cols
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    rect = pygame.Rect(col * self.cell_width, row * self.cell_height + self.ribbon_height, self.cell_width, self.cell_height) # Cells start below ribbon
+                    cell_name = ""
+                    is_active = False
+                    cell_text = ""
+                    cell_type = "data"
+
+                    if row == 0 and col == 0: # Top-left empty
+                        is_active = False
+                        cell_type = "inactive"
+                    elif row == 0 and col > 0 and col <= len(column_names): # Header row (field names)
+                        is_active = False
+                        cell_type = "header"
+                        cell_text = column_names[col-1]
+                    elif col == 0 and row > 0: # Row numbers
+                        is_active = False
+                        cell_type = "id"
+                        cell_text = str(row)
+                    elif row > 0 and col > 0 and col <= len(column_names): # Data cells
+                        is_active = True
+                        cell_type = "data"
+                        field_name = column_names[col-1]
+                        if field_name in self.db_data and row-1 < len(self.db_data[field_name]):
+                            cell_text = str(self.db_data[field_name][row-1]) if self.db_data[field_name][row-1] is not None else ""
+                        else:
+                            cell_text = "" # Default empty if no data yet
+
+                    else: # Inactive cells if more cols than defined names
+                        is_active = False
+                        cell_type = "inactive"
+
+                    self.cells.append(Cell(rect, cell_text, cell_name, is_active, cell_type))
+
+    def draw_ribbon(self, surface):
+        draw_rect(surface, ribbon_color, pygame.Rect(0, 0, self.width, self.ribbon_height))
+        button_font = pygame.font.SysFont(None, 20)
+
+        # Structure Mode Button
+        structure_button_color = selection_color if self.mode == "structure" else white
+        draw_rect(surface, structure_button_color, self.ribbon_buttons['structure_mode_rect'], 1)
+        draw_text(surface, "Structure", button_font, black, self.ribbon_buttons['structure_mode_rect'].center, 'center')
+
+        # Data Mode Button
+        data_mode_button_color = selection_color if self.mode == "data" else white
+        draw_rect(surface, data_mode_button_color, self.ribbon_buttons['data_mode_rect'], 1)
+        draw_text(surface, "Data", button_font, black, self.ribbon_buttons['data_mode_rect'].center, 'center')
 
     def draw(self, screen_surface):
         draw_rect(screen_surface, window_color, screen_surface.get_rect())
+        self.draw_ribbon(screen_surface)
         for cell in self.cells:
             cell.draw(screen_surface)
 
+    def get_cell_index(self, cell):
+        try:
+            return self.cells.index(cell)
+        except ValueError:
+            return -1
+
+    def get_cell_from_index(self, index):
+        if 0 <= index < len(self.cells):
+            return self.cells[index]
+        return None
+
+    def get_cell_from_click(self, pos):
+        for cell in self.cells:
+            if cell.rect.collidepoint(pos):
+                return cell
+        return None
+
+    def handle_ribbon_click(self, mouse_pos_relative):
+        if self.ribbon_buttons['structure_mode_rect'].collidepoint(mouse_pos_relative) and self.mode != "structure":
+            self.mode = "structure"
+            self._create_cells() # Recreate cells for structure mode
+            self.active_cell = None
+        elif self.ribbon_buttons['data_mode_rect'].collidepoint(mouse_pos_relative) and self.mode != "data":
+            self.mode = "data"
+            self._create_cells() # Recreate cells for data mode
+            self.active_cell = None
+
     def handle_event(self, event, window_rect):
-        return super().handle_event(event, window_rect)
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                mouse_pos_relative = (event.pos[0] - window_rect.x, event.pos[1] - window_rect.y)
+                if mouse_pos_relative[1] < self.ribbon_height:
+                    self.handle_ribbon_click(mouse_pos_relative)
+                    return
+
+        if self.mode == "structure":
+            if event.type == pygame.KEYDOWN:
+                if self.active_cell and self.active_cell.cell_type in ['name', 'type']:
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_TAB:
+                        pass # Prevent default tab/enter cell change in structure mode
+                    elif self.active_cell.handle_input(event):
+                        cell_index_1D = self.get_cell_index(self.active_cell)
+                        if cell_index_1D != -1:
+                            row_index = cell_index_1D // self.cols
+                            col_index = cell_index_1D % self.cols
+                            if row_index > 0 and row_index <= 9:
+                                if col_index == 1: # Name column
+                                    self.db_structure[row_index-1]['name'] = self.active_cell.text
+                                elif col_index == 2: # Type column
+                                    self.db_structure[row_index-1]['type'] = self.active_cell.text
+                        return True # Structure mode handled event
+
+        elif self.mode == "data":
+            if event.type == pygame.KEYDOWN:
+                if self.active_cell and self.active_cell.cell_type == 'data':
+                    cell_index_1D = self.get_cell_index(self.active_cell)
+                    if cell_index_1D != -1:
+                        col_index = cell_index_1D % self.cols
+                        if col_index > 0:
+                            field_name = [f['name'] for f in self.db_structure if f['name']][col_index-1] # Get field name from structure
+                            field_type = [f['type'] for f in self.db_structure if f['name']][col_index-1] # Get field type
+                            if self.active_cell.handle_input(event, field_type): # Pass field type for validation
+                                row_index = (cell_index_1D // self.cols)
+                                if field_name not in self.db_data:
+                                    self.db_data[field_name] = [None] * 19 # Initialize data list if not exists
+                                if row_index - 1 < len(self.db_data[field_name]):
+                                    cell_value = None
+                                    if self.active_cell.valid_data: # Only update if data is valid
+                                        if field_type == 'int':
+                                            cell_value = int(self.active_cell.text) if self.active_cell.text else None
+                                        elif field_type == 'bool':
+                                            cell_value = bool(int(self.active_cell.text)) if self.active_cell.text else None
+                                        else:
+                                            cell_value = self.active_cell.text if self.active_cell.text else None
+                                    self.db_data[field_name][row_index-1] = cell_value # Store validated data
+                                return True # Data mode handled event
+                            return True # Data mode handled event even if input was invalid (for cursor movement etc.)
+
+        # Cell activation/deactivation and navigation logic (common to both modes)
+        if event.type == pygame.KEYDOWN:
+            if self.active_cell:
+                if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_TAB, pygame.K_RETURN]:
+                    current_cell_index = self.get_cell_index(self.active_cell)
+                    if current_cell_index != -1:
+                        row_index = current_cell_index // self.cols
+                        col_index = current_cell_index % self.cols
+                        next_cell_index = current_cell_index
+
+                        if event.key == pygame.K_UP:
+                            next_row_index = max(1, row_index - 1)  # Stay within active rows, skip header row
+                            next_cell_index = next_row_index * self.cols + col_index
+                        elif event.key == pygame.K_DOWN:
+                            next_row_index = min(self.rows - 1, row_index + 1)
+                            next_cell_index = next_row_index * self.cols + col_index
+                        elif event.key == pygame.K_TAB:
+                            next_col_index = col_index + 1
+                            if next_col_index >= self.cols:
+                                next_col_index = 1 # Wrap to first active column
+                                next_row_index = min(self.rows - 1, row_index + 1) # Move to next row
+                                if next_row_index >= self.rows:
+                                    next_row_index = 1 # Wrap to first active row
+                                next_cell_index = next_row_index * self.cols + next_col_index
+                            else:
+                                next_cell_index = row_index * self.cols + next_col_index
+                        elif event.key == pygame.K_RETURN:
+                            next_row_index = row_index + 1
+                            if next_row_index >= self.rows:
+                                next_row_index = 1 # Wrap to first active row
+                                next_col_index = min(self.cols - 1, col_index + 1) # Move to next column
+                                if next_col_index >= self.cols:
+                                    next_col_index = 1 # Wrap to first active column
+                                next_cell_index = next_row_index * self.cols + next_col_index
+
+                            else:
+                                next_cell_index = next_row_index * self.cols + col_index
+
+                        next_cell = self.get_cell_from_index(next_cell_index)
+                        if next_cell and next_cell.is_active:
+                            self.active_cell.is_editing = False
+                            self.active_cell.selection_start = None
+                            self.active_cell.selection_end = None
+                            self.active_cell = next_cell
+                            self.active_cell.is_editing = True
+                            return True # ZDBApp handled the KEYDOWN event
+
+
+        if self.active_cell and self.active_cell.is_editing: # Check for active_cell.is_editing AFTER ZDBApp key handling
+            data_type_to_validate = None
+            if self.mode == 'data' and self.active_cell.cell_type == 'data':
+                cell_index_1D = self.get_cell_index(self.active_cell)
+                if cell_index_1D != -1:
+                    col_index = cell_index_1D % self.cols
+                    if col_index > 0:
+                        field_type = [f['type'] for f in self.db_structure if f['name']][col_index-1] # Get field type
+                        data_type_to_validate = field_type
+
+            if self.active_cell.handle_input(event, data_type_to_validate):
+                return True # Cell handled the event
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse_pos_global = event.pos
+            mouse_pos_relative = (mouse_pos_global[0] - window_rect.x, mouse_pos_global[1] - window_rect.y)
+            clicked_cell = self.get_cell_from_click(mouse_pos_relative)
+
+            if clicked_cell:
+                if self.active_cell and self.active_cell != clicked_cell:
+                    self.active_cell.is_editing = False
+                    self.active_cell.selection_start = None
+                    self.active_cell.selection_end = None
+                self.active_cell = clicked_cell
+                if self.active_cell.is_active:  # Only allow editing if cell is active
+                    self.active_cell.is_editing = True
+                    return True # ZDBApp handled MOUSEBUTTONDOWN
+            else:
+                if self.active_cell:
+                    self.active_cell.is_editing = False
+                    self.active_cell.selection_start = None
+                    self.active_cell.selection_end = None
+        return False # No event handled

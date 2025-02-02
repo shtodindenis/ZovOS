@@ -8,6 +8,7 @@ import pygame
 from apvia import ApviaApp
 from browser import BrowserApp
 from ZOffice import ZTextApp, ZDBApp, ZTableApp
+from IZ import InfZovApp
 
 pygame.init()
 pygame.font.init()
@@ -642,7 +643,7 @@ class CalendarWidget(Widget):
 
 class Window:
     def __init__(self, title, width, height, x, y, file=None, settings_app=None, browser_app=None, calculator_app=None,
-                 folder=None, apvia_app=None, properties_text=None, ztext_app=None, ztable_app=None, zdb_app=None):
+                 folder=None, apvia_app=None, properties_text=None, ztext_app=None, ztable_app=None, zdb_app=None, infzov_app=None):
         self.title = title
         self.width = width
         self.height = height
@@ -702,6 +703,7 @@ class Window:
         self.browser_app = browser_app
         self.calculator_app = calculator_app  # Add calculator_app
         self.apvia_app = apvia_app
+        self.infzov_app = infzov_app
         self.ztext_app = ztext_app
         self.ztable_app = ztable_app
         self.zdb_app = zdb_app
@@ -881,6 +883,11 @@ class Window:
                 self.apvia_app.width = self.width
                 self.apvia_app.height = self.height
                 self.apvia_app.draw(screen.subsurface(self.rect))
+            elif self.infzov_app:  # Draw Apvia app
+                draw_rect(screen, window_color, self.rect)
+                self.infzov_app.width = self.width
+                self.infzov_app.height = self.height
+                self.infzov_app.draw(screen.subsurface(self.rect), self.rect)
             elif self.folder:
                 folder_surface = pygame.Surface(
                     self.rect.size, pygame.SRCALPHA)
@@ -1036,6 +1043,8 @@ class Window:
                         self.calculator_app.handle_event(event, self.rect)
                     elif self.apvia_app:  # Handle apvia events
                         self.apvia_app.handle_event(event, self.rect)
+                    elif self.infzov_app:  # Handle apvia events
+                        self.infzov_app.handle_event(event, self.rect)
                     elif self.folder:
                         if self.folder.files_inside:
                             for file_obj in self.folder.files_inside:
@@ -1134,6 +1143,8 @@ class Window:
                     self.ztable_app.handle_event(event, self.rect)
                 elif self.zdb_app:
                     self.zdb_app.handle_event(event, self.rect)
+                elif self.infzov_app:
+                    self.infzov_app.handle_event(event, self.rect)
 
         elif event.type == pygame.MOUSEWHEEL:
             xmouse, ymouse = pygame.mouse.get_pos()
@@ -1232,6 +1243,8 @@ class Window:
                 self.zdb_app.handle_event(event, self.rect)
             if self.ztable_app:
                 self.ztable_app.handle_event(event, self.rect)
+            if self.infzov_app:
+                self.infzov_app.handle_event(event, self.rect)
 
         elif event.type == pygame.KEYDOWN:
             if event.key not in [pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_CAPSLOCK,
@@ -1748,6 +1761,26 @@ class DesktopFile:
             windows.append(zdb_window)
             taskbar.add_icon(zdb_window.taskbar_icon)
             zdb_window.bring_to_front(windows)
+        elif self.is_app and self.name == "InfZov":  # InfZov App opening logic
+            if windows:
+                last_window = windows[-1]
+                new_x = last_window.title_bar.x + 30
+                new_y = last_window.title_bar.y + 30
+                if new_x + 1280 > screen_width:
+                    new_x = 200
+                if new_y + 720 + 50 > screen_height:
+                    new_y = 200
+            else:
+                new_x = 200
+                new_y = 200
+            infzov_app_instance = InfZovApp()
+            infzov_window = Window("InfZov", infzov_app_instance.width,
+                                   infzov_app_instance.height, new_x,
+                                   new_y,
+                                   infzov_app=infzov_app_instance)  # Reusing apvia_app parameter, adjust if needed
+            windows.append(infzov_window)
+            taskbar.add_icon(infzov_window.taskbar_icon)
+            infzov_window.bring_to_front(windows)
 
     def show_properties(self):
         properties_text = f"Свойства файла: {self.name}\n"
@@ -2299,6 +2332,12 @@ files.append(DesktopFile(  # Apvia App Icon
     name="ZDataBase",
     image_path="zbd.png",  # Make sure you have py.png in images/
     x=110, y=450,
+    is_app=True
+))
+files.append(DesktopFile(  # Apvia App Icon
+    name="InfZov",
+    image_path="IZ.png",  # Make sure you have py.png in images/
+    x=10, y=580,
     is_app=True
 ))
 
