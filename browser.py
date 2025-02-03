@@ -270,6 +270,137 @@ def draw_description(screen, text, font, color):
         screen.blit(text_surface, (start_x, start_y + i * line_height))
 
 
+def vich_gen(question):
+    mono = False
+
+    def isinteger(word):
+        for i in word:
+            if i.isdigit():
+                return True
+        else:
+            return False
+
+    if not question:
+        phrases = [
+            "1488",
+            "Это все ваши фантазии",
+            "это все ваше мнение",
+            "Ааа",
+            "Польша",
+            "гитлер",
+            "Вообще-то такового не было",
+            "Слава украм",
+            "шортс преколы",
+            "сила ома на сила тока",
+            "я даун",
+            "мефедроныч",
+            "ыыыыы",
+            "Это все ваши фантазии",
+            "уфф",
+            "жестко-жестко"
+        ]
+    elif "слово на букву у" in question.lower():
+        phrases = [
+            "Дмитрий зачем ты дрочишь"
+        ]
+        mono = True
+    elif "ты долбаеб" in question.lower():
+        phrases = [
+            "Иди нахуй"
+        ]
+        mono = True
+    elif "хойка" in question.lower() or "хои 4" in question.lower() or "хойку" in question.lower():
+        phrases = [
+            "ыыы эксель таблицы",
+            "агэгэгэ квадратики по карте",
+            "ээээ танки",
+            "ыыы польша захватить аааа",
+        ]
+        mono = True
+    elif "шортс преколы" in question.lower():
+        phrases = [
+            "ыгыгггаакшзвг",
+            "ахаэхаэахаэхаэ",
+            "ыыэыэыэыэ танки люксембург"
+        ]
+        mono = True
+    elif question[-1] == "?":
+        phrases = [
+            "Не знаю",
+            "Я даун",
+            "Это все ваше мнение",
+            "Вообще-то такового не было",
+            "Слава украм",
+            "Слава",
+            "гитлер",
+            "Я люблю",
+            "уфф",
+            "жестко-жестко"
+        ]
+    elif isinteger(question):
+        b = random.randint(0, 10)
+        if b > 6:
+            phrases = ["1488"]
+            mono = True
+        else:
+            phrases = [str(random.randint(0, 100))]
+            mono = True
+    elif "закон ома" in question.lower():
+        phrases = [
+            "сила ома на сила тока",
+            "я даун",
+            "ыыыыы мефедроныч",
+            "Это все ваши фантазии"
+        ]
+        mono = True
+    else:
+        phrases = [
+            "1488",
+            "это все ваши фантазии",
+            "это все ваше мнение",
+            "Ааа",
+            "Польша",
+            "гитлер",
+            "Вообще-то такового не было",
+            "Слава украм",
+            "шортс преколы",
+            "сила ома на сила тока",
+            "я даун",
+            "мефедроныч",
+            "ыыыыы",
+            "Это все ваши фантазии",
+            "уфф",
+            "жестко-жестко",
+            "Не знаю",
+            "Я даун",
+            "Это все ваше мнение",
+            "Вообще-то такового не было",
+            "Слава украм",
+            "Слава",
+            "гитлер",
+            "Я люблю",
+            "уфф",
+            "жестко-жестко"
+        ]
+    chance = random.randint(0, 100)
+    if chance > 10:
+        g = random.randint(0, 10)
+        if g < 5:
+            random_phrase = "Аээаэаэаэаэаээаэ"
+        elif g < 7:
+            random_phrase = "ЫВЫВЫВЫВвывывыввыавававаггщщщ"
+        else:
+            random_phrase = "..."
+    else:
+        f = random.randint(1, 3)
+        if not mono:
+            random_phrase = " ".join([random.choice(phrases)
+                                     for i in range(f)]).lower().capitalize()
+        else:
+            random_phrase = random.choice(phrases)
+    return random_phrase
+
+
 class BrowserApp:
     def __init__(self):
         self.width = 800
@@ -291,13 +422,49 @@ class BrowserApp:
         self.site_variables = {}
         self.background_color = light_blue_grey
         self.startup_function_code = None
+        self.entry_elements = []  # To store entry element states
+        self.focused_entry = None
+
+    def parse_color(self, color_str):
+        color_str = color_str.lower()
+        if color_str == "red":
+            return red
+        elif color_str == "blue":
+            return blue
+        elif color_str == "green":
+            return green
+        elif color_str == "yellow":
+            return yellow
+        elif color_str == "white":
+            return white
+        elif color_str == "black":
+            return black
+        elif color_str == "orange":
+            return orange
+        elif color_str.startswith("#"):
+            try:
+                return pygame.Color(color_str)
+            except ValueError:
+                return light_blue_grey
+        elif "," in color_str:
+            try:
+                rgb = [int(c.strip()) for c in color_str.split(",")]
+                if len(rgb) == 3 and all(0 <= x <= 255 for x in rgb):
+                    return tuple(rgb)
+                else:
+                    return light_blue_grey
+            except ValueError:
+                return light_blue_grey
+        else:
+            return light_blue_grey
 
     def parse_site_file(self, filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
         except FileNotFoundError:
-            return ["Не удалось загрузить сайт."], {}
+            # Возвращаем сообщение об ошибке в виде структуры контента, чтобы избежать ошибки TypeError
+            return [{'tag': 'TEXT', 'text': "Сайт не найден."}], {}
 
         parsed_content = []
         lines = content.splitlines()
@@ -415,6 +582,36 @@ class BrowserApp:
                 continue
             elif line == "[/BUTTON]":
                 continue
+            elif line.startswith("[FIGURE") and line.endswith("[/FIGURE]"):
+                attrs_str = line[line.find(
+                    "(")+1:line.find(")")] if "(" in line and ")" in line else ""
+                attrs = {}
+                for attr_pair in attrs_str.split(";"):
+                    if "=" in attr_pair:
+                        parts = attr_pair.split("=")
+                        if len(parts) == 2:
+                            key, value = parts
+                            attrs[key.strip()] = value.strip().strip(
+                                "'").strip('"')
+                parsed_content.append({'tag': 'FIGURE', 'attrs': attrs})
+                continue
+            elif line == "[/FIGURE]":
+                continue
+            elif line.startswith("[ENTRY") and line.endswith("[/ENTRY]"):
+                attrs_str = line[line.find(
+                    "(")+1:line.find(")")] if "(" in line and ")" in line else ""
+                attrs = {}
+                for attr_pair in attrs_str.split(";"):
+                    if "=" in attr_pair:
+                        parts = attr_pair.split("=")
+                        if len(parts) == 2:
+                            key, value = parts
+                            attrs[key.strip()] = value.strip().strip(
+                                "'").strip('"')
+                parsed_content.append({'tag': 'ENTRY', 'attrs': attrs})
+                continue
+            elif line == "[/ENTRY]":
+                continue
 
             if tags_section:
                 if "=" in line:
@@ -431,39 +628,6 @@ class BrowserApp:
 
         return parsed_content, functions
 
-    def parse_color(self, color_str):
-        color_str = color_str.lower()
-        if color_str == "red":
-            return red
-        elif color_str == "blue":
-            return blue
-        elif color_str == "green":
-            return green
-        elif color_str == "yellow":
-            return yellow
-        elif color_str == "white":
-            return white
-        elif color_str == "black":
-            return black
-        elif color_str == "orange":
-            return orange
-        elif color_str.startswith("#"):
-            try:
-                return pygame.Color(color_str)
-            except ValueError:
-                return light_blue_grey
-        elif "," in color_str:
-            try:
-                rgb = [int(c.strip()) for c in color_str.split(",")]
-                if len(rgb) == 3 and all(0 <= x <= 255 for x in rgb):
-                    return tuple(rgb)
-                else:
-                    return light_blue_grey
-            except ValueError:
-                return light_blue_grey
-        else:
-            return light_blue_grey
-
     def render_site_content(self, content, screen_surface, scroll_y):
         y_offset = 10 - scroll_y
         line_spacing = 5
@@ -472,16 +636,22 @@ class BrowserApp:
         x_margin = 10
         total_height = 0
         button_elements = []
+        entry_elements = []  # List to keep track of rendered entry elements
 
-        for item in content:
-            if item['tag'] == 'NAME':
+        # item_index is needed for entry elements
+        for item_index, item in enumerate(content):
+            if not isinstance(item, dict):  # Проверка, что item является словарем
+                print(f"Warning: Unexpected item type in content: {item}")
+                continue  # Пропускаем элемент, если это не словарь
+
+            if item.get('tag') == 'NAME':  # Используем .get() для безопасного доступа
                 draw_text(screen_surface, item['text'], browser_font, text_color, (screen_surface.get_width(
                 ) // 2, y_offset + browser_font.get_height() // 2), 'center')
                 name_surface = browser_font.render(
                     item['text'], True, text_color)
                 y_offset += name_surface.get_height() + line_spacing + 10
                 total_height += name_surface.get_height() + line_spacing + 10
-            elif item['tag'] == 'TEXT':
+            elif item.get('tag') == 'TEXT':
                 text = item['text']
                 attrs = item['attrs']
                 element_id = attrs.get('id')
@@ -537,7 +707,7 @@ class BrowserApp:
                     screen_surface.blit(text_surface, text_rect)
                     y_offset += text_surface.get_height() + line_spacing
                     total_height += text_surface.get_height() + line_spacing
-            elif item['tag'] == 'IMG':
+            elif item.get('tag') == 'IMG':
                 link = item['link']
                 attrs = item['attrs']
                 align = attrs.get('align', 'left')
@@ -600,7 +770,7 @@ class BrowserApp:
                     screen_surface.blit(error_surface, error_rect)
                     y_offset += error_rect.height + line_spacing
                     total_height += error_rect.height + line_spacing
-            elif item['tag'] == 'BUTTON':
+            elif item.get('tag') == 'BUTTON':
                 button_text = item['text']
                 attrs = item['attrs']
                 button_width = int(attrs.get('width', '100'))
@@ -652,8 +822,116 @@ class BrowserApp:
 
                 y_offset += button_height + line_spacing
                 total_height += button_height + line_spacing
+            elif item.get('tag') == 'FIGURE':
+                attrs = item['attrs']
+                fig_type = attrs.get('type', 'rect')  # Default to rectangle
+                fig_color_str = attrs.get('color', 'black')
+                fig_border_color_str = attrs.get('border_color', 'black')
+                fig_border_width = int(attrs.get('border_width', '0'))
+                fig_x = int(attrs.get('x', x_margin))
+                fig_y = int(attrs.get('y', y_offset))
+                fig_width = int(attrs.get('width', '100'))
+                fig_height = int(attrs.get('height', '50'))
+                # For rounded rect or circle
+                fig_radius = int(attrs.get('radius', '0'))
 
-        return total_height, button_elements
+                fig_color = self.parse_color(fig_color_str)
+                fig_border_color = self.parse_color(fig_border_color_str)
+
+                figure_rect = pygame.Rect(
+                    fig_x + x_margin, fig_y, fig_width, fig_height)  # Add x_margin to x
+
+                if fig_type == 'rect':
+                    draw_rect(screen_surface, fig_color,
+                              figure_rect, border_radius=fig_radius)
+                    if fig_border_width > 0:
+                        draw_rect(screen_surface, fig_border_color, figure_rect,
+                                  border_width=fig_border_width, border_radius=fig_radius)
+                elif fig_type == 'circle':
+                    fig_center = figure_rect.center
+                    # if radius is not provided, use half of min dimension
+                    fig_radius_circle = min(
+                        fig_width, fig_height) // 2 if fig_radius == 0 else fig_radius
+                    pygame.draw.circle(
+                        screen_surface, fig_color, fig_center, fig_radius_circle)
+                    if fig_border_width > 0:
+                        pygame.draw.circle(
+                            screen_surface, fig_border_color, fig_center, fig_radius_circle, width=fig_border_width)
+                elif fig_type == 'ellipse':
+                    pygame.draw.ellipse(screen_surface, fig_color, figure_rect)
+                    if fig_border_width > 0:
+                        pygame.draw.ellipse(
+                            screen_surface, fig_border_color, figure_rect, width=fig_border_width)
+                # Add more shapes like 'line', 'polygon' if needed
+
+                y_offset += fig_height + line_spacing
+                total_height += fig_height + line_spacing
+            elif item.get('tag') == 'ENTRY':
+                attrs = item['attrs']
+                entry_width = int(attrs.get('width', '200'))
+                entry_height = int(attrs.get('height', '30'))
+                font_name = attrs.get('font', font_path)
+                font_size = int(attrs.get('size', '20'))
+                # Variable name to store text
+                text_variable = attrs.get('variable')
+                default_text = attrs.get('text', '')  # Default text if any
+                border_radius = int(attrs.get('radius', '0'))
+                border_width = int(attrs.get('border', '1'))
+                align = attrs.get('align', 'left')
+
+                entry_rect = pygame.Rect(
+                    x_margin, y_offset, entry_width, entry_height)  # Add x_margin to x
+
+                if align == 'center':
+                    entry_rect.centerx = content_width // 2 + x_margin
+                elif align == 'right':
+                    entry_rect.right = content_width + x_margin
+
+                draw_rect(screen_surface, window_color,
+                          entry_rect, border_radius=border_radius)
+                draw_rect(screen_surface, black, entry_rect,
+                          border_width=border_width, border_radius=border_radius)
+
+                current_font = get_font(font_name, font_size)
+
+                # Initialize entry state if not already initialized
+                entry_state = None
+                if item_index < len(self.entry_elements):
+                    entry_state = self.entry_elements[item_index]
+                else:
+                    entry_state = {'text': default_text, 'active': False, 'cursor_pos': len(
+                        default_text), 'cursor_visible': False, 'cursor_time': 0, 'variable': text_variable}
+                    # Add to entry_elements list
+                    self.entry_elements.append(entry_state)
+
+                if entry_state:
+                    draw_text(screen_surface, entry_state['text'], current_font, text_color, (
+                        entry_rect.x + 5, entry_rect.y + 5), 'topleft')
+
+                    if entry_state['active']:
+                        if pygame.time.get_ticks() - entry_state['cursor_time'] > 500:
+                            entry_state['cursor_visible'] = not entry_state['cursor_visible']
+                            entry_state['cursor_time'] = pygame.time.get_ticks()
+
+                        if entry_state['cursor_visible']:
+                            cursor_x = entry_rect.x + 5 + \
+                                current_font.size(
+                                    entry_state['text'][:entry_state['cursor_pos']])[0]
+                            cursor_y = entry_rect.y + 5
+                            pygame.draw.line(screen_surface, text_color, (cursor_x, cursor_y), (
+                                cursor_x, cursor_y + current_font.get_height()), 2)
+
+                entry_element_info = {
+                    'rect': entry_rect,
+                    'item_index': item_index  # Store item index to link back to entry_elements state
+                }
+                entry_elements.append(entry_element_info)
+
+                y_offset += entry_height + line_spacing
+                total_height += entry_height + line_spacing
+
+        # Return entry_elements for event handling
+        return total_height, button_elements, entry_elements
 
     def setattribute(self, element_id, attribute, value):
         if self.site_content:
@@ -702,110 +980,162 @@ class BrowserApp:
         content_surface.fill(self.background_color)
 
         if self.site_content:
-            self.content_height, self.button_elements = self.render_site_content(
-                self.site_content, content_surface, self.scroll_y)
+            self.content_height, self.button_elements, self.rendered_entry_elements = self.render_site_content(
+                self.site_content, content_surface, self.scroll_y)  # Get rendered entry elements
             screen_surface.blit(content_surface, self.content_rect.topleft)
-
-        if self.text_input_active:
-            if pygame.time.get_ticks() - self.cursor_time > 500:
-                self.cursor_visible = not self.cursor_visible
-                self.cursor_time = pygame.time.get_ticks()
-
-            if self.cursor_visible:
-                cursor_x = self.address_bar_rect.x + 5 + \
-                    browser_font.size(
-                        self.address_bar_text[:self.cursor_pos])[0]
-                cursor_y = self.address_bar_rect.y + 5
-                pygame.draw.line(screen_surface, text_color, (cursor_x, cursor_y),
-                                 (cursor_x, cursor_y + browser_font.get_height()), 2)
 
     def handle_event(self, event, window_rect):
         if event.type == pygame.MOUSEBUTTONDOWN:
             relative_mouse_pos = (
                 event.pos[0] - window_rect.x, event.pos[1] - window_rect.y)
             if event.button == 1:
+                # Handle Address Bar Click
                 if self.address_bar_rect.collidepoint(relative_mouse_pos):
                     self.text_input_active = True
                     self.cursor_visible = True
                     self.cursor_time = pygame.time.get_ticks()
-                    click_pos_local_x = relative_mouse_pos[0] - (
-                        self.address_bar_rect.x + 5)
-                    char_width = browser_font.size(
-                        " ")[0]
-                    if char_width > 0:
-                        self.cursor_pos = max(
-                            0, int(click_pos_local_x / char_width))
-                    else:
-                        self.cursor_pos = len(self.address_bar_text)
+                    self.cursor_pos = len(self.address_bar_text)
+                    if self.focused_entry is not None:
+                        # Deactivate previously focused entry if address bar is clicked
+                        self.entry_elements[self.focused_entry]['active'] = False
+                        self.focused_entry = None
                 else:
                     self.text_input_active = False
-                if self.site_content:
+
+                # Handle Button Clicks
+                if self.site_content and self.button_elements:
                     content_surface_offset = self.content_rect.topleft
                     relative_mouse_pos_in_content = (
                         relative_mouse_pos[0] - content_surface_offset[0], relative_mouse_pos[1] - content_surface_offset[1] + self.scroll_y)
-                    if self.button_elements:
-                        for button_element in self.button_elements:
-                            if button_element['rect'].collidepoint(relative_mouse_pos_in_content):
-                                command_name = button_element['command']
-                                if command_name and command_name in self.functions:
-                                    function_code = self.functions[command_name]
-                                    try:
-                                        local_vars = {
-                                            'attrs': button_element['attrs'],
-                                            'setattribute': self.setattribute,
-                                            'setvariable': self.setvariable,
-                                            'getvariable': self.getvariable
-                                        }
-                                        exec(function_code,
-                                             globals(), local_vars)
-                                    except Exception as e:
-                                        pass
+                    for button_element in self.button_elements:
+                        if button_element['rect'].collidepoint(relative_mouse_pos_in_content):
+                            command_name = button_element['command']
+                            if command_name and command_name in self.functions:
+                                function_code = self.functions[command_name]
+                                try:
+                                    local_vars = {
+                                        'attrs': button_element['attrs'],
+                                        'setattribute': self.setattribute,
+                                        'setvariable': self.setvariable,
+                                        'getvariable': self.getvariable
+                                    }
+                                    exec(function_code,
+                                         globals(), local_vars)
+                                except Exception as e:
+                                    pass
                                 break
+
+                # Handle Entry Clicks
+                if self.site_content and self.rendered_entry_elements:
+                    content_surface_offset = self.content_rect.topleft
+                    relative_mouse_pos_in_content = (
+                        relative_mouse_pos[0] - content_surface_offset[0], relative_mouse_pos[1] - content_surface_offset[1] + self.scroll_y)
+                    for entry_element in self.rendered_entry_elements:
+                        if entry_element['rect'].collidepoint(relative_mouse_pos_in_content):
+                            item_index = entry_element['item_index']
+                            # If another entry was focused, deactivate it
+                            if self.focused_entry is not None and self.focused_entry != item_index:
+                                self.entry_elements[self.focused_entry]['active'] = False
+                            # Activate the clicked entry
+                            self.entry_elements[item_index]['active'] = True
+                            self.entry_elements[item_index]['cursor_visible'] = True
+                            self.entry_elements[item_index]['cursor_time'] = pygame.time.get_ticks(
+                            )
+                            self.focused_entry = item_index
+                            break  # Focus only one entry at a time
+                    else:  # Clicked outside any entry or address bar
+                        if self.focused_entry is not None:
+                            # Deactivate previously focused entry if clicked outside
+                            self.entry_elements[self.focused_entry]['active'] = False
+                            self.focused_entry = None
+
             elif event.button == 4:
                 self.scroll_y = max(0, self.scroll_y - 30)
             elif event.button == 5:
                 self.scroll_y = min(
                     self.content_height - self.content_rect.height, self.scroll_y + 30)
-        elif event.type == pygame.KEYDOWN and self.text_input_active:
-            if event.key == pygame.K_LEFT:
-                self.cursor_pos = max(0, self.cursor_pos - 1)
-            elif event.key == pygame.K_RIGHT:
-                self.cursor_pos = min(
-                    len(self.address_bar_text), self.cursor_pos + 1)
-            elif event.key == pygame.K_BACKSPACE:
-                if self.cursor_pos > 0:
-                    self.address_bar_text = self.address_bar_text[:self.cursor_pos -
-                                                                  1] + self.address_bar_text[self.cursor_pos:]
-                    self.cursor_pos -= 1
-            elif event.key == pygame.K_DELETE:
-                if self.cursor_pos < len(self.address_bar_text):
-                    self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
-                        self.address_bar_text[self.cursor_pos+1:]
-            elif event.key == pygame.K_RETURN:
-                url = self.address_bar_text.lower()
-                if url.startswith("zov://"):
-                    site_name = url[6:]
-                    site_path = os.path.join("sites", site_name)
-                    if os.path.exists(site_path):
-                        self.site_variables = {}
-                        self.site_content, self.functions = self.parse_site_file(
-                            site_path)
-                        self.scroll_y = 0
+        elif event.type == pygame.KEYDOWN:
+            if self.text_input_active:  # Address Bar Input
+                if event.key == pygame.K_LEFT:
+                    self.cursor_pos = max(0, self.cursor_pos - 1)
+                elif event.key == pygame.K_RIGHT:
+                    self.cursor_pos = min(
+                        len(self.address_bar_text), self.cursor_pos + 1)
+                elif event.key == pygame.K_BACKSPACE:
+                    if self.cursor_pos > 0:
+                        self.address_bar_text = self.address_bar_text[:self.cursor_pos -
+                                                                      1] + self.address_bar_text[self.cursor_pos:]
+                        self.cursor_pos -= 1
+                elif event.key == pygame.K_DELETE:
+                    if self.cursor_pos < len(self.address_bar_text):
+                        self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
+                            self.address_bar_text[self.cursor_pos+1:]
+                elif event.key == pygame.K_RETURN:
+                    url = self.address_bar_text.lower()
+                    if url.startswith("zov://"):
+                        site_name = url[6:]
+                        site_path = os.path.join("sites", site_name)
+                        if os.path.exists(site_path):
+                            self.site_variables = {}
+                            self.entry_elements = []  # Clear entry element states when loading new site
+                            self.focused_entry = None
+                            self.site_content, self.functions = self.parse_site_file(
+                                site_path)
+                            self.scroll_y = 0
 
-                        if self.site_content:
-                            self.execute_startup_function()
+                            if self.site_content:
+                                self.execute_startup_function()
 
+                        else:
+                            # Display "Site not found" message in browser content area
+                            # Исправлено тут, возвращаем структуру контента
+                            self.site_content = [
+                                {'tag': 'TEXT', 'text': "Сайт не найден."}], {}
+                            self.scroll_y = 0
                     else:
-                        self.site_content = ["Сайт не найден."], {}
+                        # Исправлено тут, возвращаем структуру контента
+                        self.site_content = [
+                            {'tag': 'TEXT', 'text': "Неверный адрес."}], {}
                         self.scroll_y = 0
-                else:
-                    self.site_content = ["Неверный адрес."], {}
-                    self.scroll_y = 0
-                self.text_input_active = False
-            elif event.unicode:
-                self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
-                    event.unicode + self.address_bar_text[self.cursor_pos:]
-                self.cursor_pos += 1
+                    self.text_input_active = False
+                elif event.unicode:
+                    self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
+                        event.unicode + self.address_bar_text[self.cursor_pos:]
+                    self.cursor_pos += 1
 
-            self.cursor_visible = True
-            self.cursor_time = pygame.time.get_ticks()
+                self.cursor_visible = True
+                self.cursor_time = pygame.time.get_ticks()
+            elif self.focused_entry is not None:  # Entry Input
+                current_entry_state = self.entry_elements[self.focused_entry]
+                if event.key == pygame.K_LEFT:
+                    current_entry_state['cursor_pos'] = max(
+                        0, current_entry_state['cursor_pos'] - 1)
+                elif event.key == pygame.K_RIGHT:
+                    current_entry_state['cursor_pos'] = min(
+                        len(current_entry_state['text']), current_entry_state['cursor_pos'] + 1)
+                elif event.key == pygame.K_BACKSPACE:
+                    if current_entry_state['cursor_pos'] > 0:
+                        current_entry_state['text'] = current_entry_state['text'][:current_entry_state['cursor_pos'] -
+                                                                                  1] + current_entry_state['text'][current_entry_state['cursor_pos']:]
+                        current_entry_state['cursor_pos'] -= 1
+                elif event.key == pygame.K_DELETE:
+                    if current_entry_state['cursor_pos'] < len(current_entry_state['text']):
+                        current_entry_state['text'] = current_entry_state['text'][:current_entry_state['cursor_pos']
+                                                                                  ] + current_entry_state['text'][current_entry_state['cursor_pos']+1:]
+                elif event.key == pygame.K_RETURN:
+                    var_name = current_entry_state['variable']
+                    if var_name:
+                        self.setvariable(var_name, current_entry_state['text'])
+                    # Deactivate entry after pressing Enter
+                    current_entry_state['active'] = False
+                    self.focused_entry = None
+                elif event.unicode:
+                    current_entry_state['text'] = current_entry_state['text'][:current_entry_state['cursor_pos']
+                                                                              ] + event.unicode + current_entry_state['text'][current_entry_state['cursor_pos']:]
+                    current_entry_state['cursor_pos'] += 1
+
+                current_entry_state['cursor_visible'] = True
+                current_entry_state['cursor_time'] = pygame.time.get_ticks()
+
+        # Return True to indicate that the event was handled. This is important in Pygame event loop.
+        return True
