@@ -1,0 +1,23 @@
+[TAGS]
+$name = VICH GPT
+$color = light_blue_grey
+[/TAGS]
+
+[TEXT(id=title_text; align=center; size=32)]Спроси что-нибудь у VICH GPT[/TEXT]
+[IMG(link=parafin.png; align=center)] [/IMG]
+[TEXT(id=output_text; align=center; size=24)]Нажми кнопку "Генерировать" чтобы получить ответ.[/TEXT]
+
+[ENTRY(id=input_text; align=center; width=400; height=40; radius=5; variable=user_question)] [/ENTRY]
+
+
+[BUTTON(command=generate_response; align=center; width=200; height=40; radius=5)]Генерировать[/BUTTON]
+
+%start{
+  setvariable('output_element_id', 'output_text')
+}
+
+@generate_response{
+  question = getvariable('user_question')
+  response = vich_gen(question)
+  setattribute(getvariable('output_element_id'), 'text', response)
+}
