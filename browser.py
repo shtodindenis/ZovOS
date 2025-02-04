@@ -69,30 +69,6 @@ settings_font = get_font(font_path, 20)
 browser_font = get_font(font_path, 20)
 browser_content_font = get_font(font_path, 24)
 
-# --- Startup Animation Frames ---
-opening_frames = []
-loop_frames = []
-try:
-    for i in range(10):
-        frame_path = os.path.join("images", "opening", f"opening{i}.png")
-        if not os.path.exists(frame_path):
-            raise FileNotFoundError(
-                f"Opening frame image not found: {frame_path}")
-        frame = pygame.image.load(frame_path).convert()
-        opening_frames.append(pygame.transform.scale(
-            frame, (screen_width, screen_height)))
-    for i in range(10, 14):
-        frame_path = os.path.join("images", "opening", f"opening{i}.png")
-        if not os.path.exists(frame_path):
-            raise FileNotFoundError(
-                f"Loop frame image not found: {frame_path}")
-        frame = pygame.image.load(frame_path).convert()
-        loop_frames.append(pygame.transform.scale(
-            frame, (screen_width, screen_height)))
-except FileNotFoundError as e:
-    pygame.quit()
-    sys.exit()
-
 frame_duration = 0.2
 startup_duration = 7
 current_frame = 0
@@ -406,24 +382,58 @@ class BrowserApp:
         self.width = 800
         self.height = 600
         self.address_bar_rect = pygame.Rect(10, 10, self.width - 20, 30)
-        self.address_bar_text = "zov://"
+        self.address_bar_text = "zov://homepage"  # Default to homepage
         self.content_rect = pygame.Rect(
             10, 50, self.width - 20, self.height - 60)
         self.text_input_active = False
         self.cursor_visible = True
         self.cursor_time = pygame.time.get_ticks()
-        self.cursor_pos = 0
+        self.cursor_pos = len(self.address_bar_text)
         self.site_content = None
         self.functions = {}
         self.button_elements = []
         self.scroll_y = 0
         self.content_height = 0
         self.image_cache = {}
-        self.site_variables = {}
+        self.site_variables = {}  # Site variables to store entry texts
         self.background_color = light_blue_grey
         self.startup_function_code = None
         self.entry_elements = []  # To store entry element states
         self.focused_entry = None
+        self.history = []  # Search history
+        self.browser_settings = {  # Browser specific settings
+            'homepage': 'homepage',  # Default homepage
+            # Browser theme (can be independent from system theme if needed)
+            'theme': 'light'
+            # Add more browser settings here
+        }
+        # Load homepage on init
+        self.load_site(f"zov://{self.browser_settings['homepage']}")
+
+    def load_site(self, url):
+        if url.startswith("zov://"):
+            site_name = url[6:]
+            # Assuming .zov extension
+            site_path = os.path.join("sites", site_name + ".zov")
+            if os.path.exists(site_path):
+                self.site_variables = {}  # Clear site variables on new site load
+                self.entry_elements = []
+                self.focused_entry = None
+                self.site_content, self.functions = self.parse_site_file(
+                    site_path)
+                self.scroll_y = 0
+                self.address_bar_text = url
+                self.history.append(url)  # Add to history
+                if self.site_content:
+                    self.execute_startup_function()
+            else:
+                self.site_content = [
+                    {'tag': 'TEXT', 'text': "Сайт не найден."}], {}
+                self.scroll_y = 0
+        else:
+            self.site_content = [
+                {'tag': 'TEXT', 'text': "Неверный адрес."}], {}
+            self.scroll_y = 0
 
     def parse_color(self, color_str):
         color_str = color_str.lower()
@@ -574,9 +584,9 @@ class BrowserApp:
                         parts = attr_pair.split("=")
                         if len(parts) == 2:
                             key, value = parts
-                            attrs[key.strip()] = value.strip().strip(
-                                "'").strip('"')
-
+                            attr_key = key.strip()
+                            attr_value = value.strip().strip("'").strip('"')
+                            attrs[attr_key] = attr_value
                 parsed_content.append(
                     {'tag': 'BUTTON', 'text': button_text, 'attrs': attrs})
                 continue
@@ -608,7 +618,14 @@ class BrowserApp:
                             key, value = parts
                             attrs[key.strip()] = value.strip().strip(
                                 "'").strip('"')
-                parsed_content.append({'tag': 'ENTRY', 'attrs': attrs})
+                entry_variable = attrs.get('variable')
+                default_text = attrs.get('text', '')
+                initial_text = self.site_variables.get(
+                    entry_variable, default_text) if entry_variable else default_text  # Load saved text
+
+                parsed_content.append(
+                    # Pass initial_text
+                    {'tag': 'ENTRY', 'attrs': attrs, 'initial_text': initial_text})
                 continue
             elif line == "[/ENTRY]":
                 continue
@@ -783,6 +800,9 @@ class BrowserApp:
                 align = attrs.get('align', 'left')
                 button_text_color_str = attrs.get(
                     'color', 'black')
+                button_bgcolor_str = attrs.get('bgcolor', attrs.get('background_color', attrs.get(
+                    'background')))  # background-color, background, bgcolor
+                button_border_color_str = attrs.get('border_color', 'black')
 
                 if hidden:
                     continue
@@ -795,18 +815,28 @@ class BrowserApp:
                 elif align == 'right':
                     button_rect.right = content_width + x_margin
 
-                draw_rect(screen_surface, window_color,
+                button_bgcolor = window_color  # Default button background color
+                if button_bgcolor_str:
+                    button_bgcolor = self.parse_color(button_bgcolor_str)
+                draw_rect(screen_surface, button_bgcolor,
                           button_rect, border_radius=border_radius)
-                draw_rect(screen_surface, black, button_rect,
+
+                button_border_color = black  # Default border color
+                if button_border_color_str:
+                    button_border_color = self.parse_color(
+                        button_border_color_str)
+                draw_rect(screen_surface, button_border_color, button_rect,
                           border_width, border_radius=border_radius)
 
                 current_font = get_font(font_name, font_size)
 
-                button_text_color = text_color
+                button_text_color = text_color  # Default text color
                 if button_text_color_str == 'white':
                     button_text_color = white
                 elif button_text_color_str == 'black':
                     button_text_color = black
+                elif button_text_color_str:
+                    button_text_color = self.parse_color(button_text_color_str)
 
                 draw_text(screen_surface, button_text, current_font,
                           button_text_color, button_rect.center, 'center')
@@ -878,6 +908,8 @@ class BrowserApp:
                 border_radius = int(attrs.get('radius', '0'))
                 border_width = int(attrs.get('border', '1'))
                 align = attrs.get('align', 'left')
+                # Get initial text from parsed data
+                initial_text = item.get('initial_text', default_text)
 
                 entry_rect = pygame.Rect(
                     x_margin, y_offset, entry_width, entry_height)  # Add x_margin to x
@@ -899,8 +931,8 @@ class BrowserApp:
                 if item_index < len(self.entry_elements):
                     entry_state = self.entry_elements[item_index]
                 else:
-                    entry_state = {'text': default_text, 'active': False, 'cursor_pos': len(
-                        default_text), 'cursor_visible': False, 'cursor_time': 0, 'variable': text_variable}
+                    entry_state = {'text': initial_text, 'active': False, 'cursor_pos': len(
+                        initial_text), 'cursor_visible': False, 'cursor_time': 0, 'variable': text_variable}
                     # Add to entry_elements list
                     self.entry_elements.append(entry_state)
 
@@ -956,7 +988,11 @@ class BrowserApp:
                 local_vars = {
                     'setattribute': self.setattribute,
                     'setvariable': self.setvariable,
-                    'getvariable': self.getvariable
+                    'getvariable': self.getvariable,
+                    'load_site': self.load_site,  # Add load_site to function context
+                    'get_history': self.get_history,  # Add get_history
+                    'set_browser_setting': self.set_browser_setting,  # Add set_browser_setting
+                    'get_browser_setting': self.get_browser_setting  # Add get_browser_setting
                 }
                 exec(self.startup_function_code, globals(), local_vars)
             except Exception as e:
@@ -998,9 +1034,16 @@ class BrowserApp:
                     if self.focused_entry is not None:
                         # Deactivate previously focused entry if address bar is clicked
                         self.entry_elements[self.focused_entry]['active'] = False
+                        # Save text before losing focus
+                        self.save_entry_text(self.focused_entry)
                         self.focused_entry = None
                 else:
                     self.text_input_active = False
+                    if self.focused_entry is not None:
+                        self.entry_elements[self.focused_entry]['active'] = False
+                        # Save text when entry loses focus by clicking elsewhere
+                        self.save_entry_text(self.focused_entry)
+                        self.focused_entry = None
 
                 # Handle Button Clicks
                 if self.site_content and self.button_elements:
@@ -1017,7 +1060,11 @@ class BrowserApp:
                                         'attrs': button_element['attrs'],
                                         'setattribute': self.setattribute,
                                         'setvariable': self.setvariable,
-                                        'getvariable': self.getvariable
+                                        'getvariable': self.getvariable,
+                                        'load_site': self.load_site,  # Add load_site to function context
+                                        'get_history': self.get_history,  # Add get_history
+                                        'set_browser_setting': self.set_browser_setting,  # Add set_browser_setting
+                                        'get_browser_setting': self.get_browser_setting  # Add get_browser_setting
                                     }
                                     exec(function_code,
                                          globals(), local_vars)
@@ -1036,6 +1083,9 @@ class BrowserApp:
                             # If another entry was focused, deactivate it
                             if self.focused_entry is not None and self.focused_entry != item_index:
                                 self.entry_elements[self.focused_entry]['active'] = False
+                                # Save text before changing focus
+                                self.save_entry_text(self.focused_entry)
+
                             # Activate the clicked entry
                             self.entry_elements[item_index]['active'] = True
                             self.entry_elements[item_index]['cursor_visible'] = True
@@ -1043,11 +1093,7 @@ class BrowserApp:
                             )
                             self.focused_entry = item_index
                             break  # Focus only one entry at a time
-                    else:  # Clicked outside any entry or address bar
-                        if self.focused_entry is not None:
-                            # Deactivate previously focused entry if clicked outside
-                            self.entry_elements[self.focused_entry]['active'] = False
-                            self.focused_entry = None
+                    # Removed the else block here as deactivation is handled at the beginning of MOUSEBUTTONDOWN
 
             elif event.button == 4:
                 self.scroll_y = max(0, self.scroll_y - 30)
@@ -1071,32 +1117,8 @@ class BrowserApp:
                         self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
                             self.address_bar_text[self.cursor_pos+1:]
                 elif event.key == pygame.K_RETURN:
-                    url = self.address_bar_text.lower()
-                    if url.startswith("zov://"):
-                        site_name = url[6:]
-                        site_path = os.path.join("sites", site_name)
-                        if os.path.exists(site_path):
-                            self.site_variables = {}
-                            self.entry_elements = []  # Clear entry element states when loading new site
-                            self.focused_entry = None
-                            self.site_content, self.functions = self.parse_site_file(
-                                site_path)
-                            self.scroll_y = 0
-
-                            if self.site_content:
-                                self.execute_startup_function()
-
-                        else:
-                            # Display "Site not found" message in browser content area
-                            # Исправлено тут, возвращаем структуру контента
-                            self.site_content = [
-                                {'tag': 'TEXT', 'text': "Сайт не найден."}], {}
-                            self.scroll_y = 0
-                    else:
-                        # Исправлено тут, возвращаем структуру контента
-                        self.site_content = [
-                            {'tag': 'TEXT', 'text': "Неверный адрес."}], {}
-                        self.scroll_y = 0
+                    url_to_load = self.address_bar_text.lower()
+                    self.load_site(url_to_load)
                     self.text_input_active = False
                 elif event.unicode:
                     self.address_bar_text = self.address_bar_text[:self.cursor_pos] + \
@@ -1123,19 +1145,52 @@ class BrowserApp:
                         current_entry_state['text'] = current_entry_state['text'][:current_entry_state['cursor_pos']
                                                                                   ] + current_entry_state['text'][current_entry_state['cursor_pos']+1:]
                 elif event.key == pygame.K_RETURN:
-                    var_name = current_entry_state['variable']
-                    if var_name:
-                        self.setvariable(var_name, current_entry_state['text'])
-                    # Deactivate entry after pressing Enter
+                    # Save text on Enter
+                    self.save_entry_text(self.focused_entry)
                     current_entry_state['active'] = False
                     self.focused_entry = None
                 elif event.unicode:
                     current_entry_state['text'] = current_entry_state['text'][:current_entry_state['cursor_pos']
                                                                               ] + event.unicode + current_entry_state['text'][current_entry_state['cursor_pos']:]
                     current_entry_state['cursor_pos'] += 1
+                    # Immediately save text on each input
+                    self.save_entry_text(self.focused_entry)
 
                 current_entry_state['cursor_visible'] = True
                 current_entry_state['cursor_time'] = pygame.time.get_ticks()
 
         # Return True to indicate that the event was handled. This is important in Pygame event loop.
         return True
+
+    # Helper function to save entry text to site variables
+    def save_entry_text(self, focused_entry_index):
+        if focused_entry_index is not None:
+            current_entry_state = self.entry_elements[focused_entry_index]
+            var_name = current_entry_state['variable']
+            if var_name:
+                self.setvariable(var_name, current_entry_state['text'])
+
+    # --- New Browser Features ---
+
+    def get_history(self):
+        return self.history
+
+    def set_browser_setting(self, setting_name, setting_value):
+        self.browser_settings[setting_name] = setting_value
+        if setting_name == 'theme':
+            self.apply_browser_theme(setting_value)
+        if setting_name == 'homepage':
+            # Update homepage in settings
+            self.browser_settings['homepage'] = setting_value
+
+    def get_browser_setting(self, setting_name):
+        return self.browser_settings.get(setting_name)
+
+    def apply_browser_theme(self, theme_name):
+        global window_color, text_color
+        if theme_name == 'dark':
+            window_color = dark_theme_window_color
+            text_color = dark_theme_text_color
+        else:  # Default to light or handle 'light' explicitly
+            window_color = light_theme_window_color
+            text_color = light_theme_text_color
