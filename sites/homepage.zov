@@ -1,0 +1,16 @@
+[TAGS]
+$name = Главная страница
+$color = light_blue_grey
+[/TAGS]
+[TEXT(size=48; align=center)]Добро пожаловать в ZOV Browser[/TEXT]
+[TEXT(size=24; align=center)]Быстрый, легкий и настраиваемый веб-обозреватель[/TEXT]
+[TEXT(size=20; align=center)]Быстрые действия:[/TEXT]
+[BUTTON(command=open_settings; width=200; align=center)]Настройки[/BUTTON]
+[TEXT(size=16; align=center)]Введите zov://settings в адресной строке, чтобы открыть настройки в любое время.[/TEXT]
+
+%start{
+}
+
+@open_settings{
+    load_site('zov://settings')
+}

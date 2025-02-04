@@ -1,0 +1,41 @@
+[TAGS]
+$name = Browser Settings
+$color = light_blue_grey
+[/TAGS]
+[TEXT]Настройки браузера:[/TEXT]
+
+[TEXT]Тема:[/TEXT]
+[BUTTON(command='toggle_theme')]Сменить тему[/BUTTON]
+
+[TEXT]Главная страница:[/TEXT]
+[ENTRY(variable=homepage_entry, text='$homepage', width=300, id=homepage_input)][/ENTRY]
+[BUTTON(command=set_homepage)]Сохранить главную страницу[/BUTTON]
+
+%start{
+    if get_browser_setting('theme') == 'dark':
+        setattribute('theme_button_text', 'text', 'Светлая тема')
+    else:
+        setattribute('theme_button_text', 'text', 'Темная тема')
+
+    setattribute('homepage_input', 'text', get_browser_setting('homepage'))
+}
+
+@toggle_theme{
+    current_theme = get_browser_setting('theme')
+    if current_theme == 'light':
+        set_browser_setting('theme', 'dark')
+        setattribute('theme_button_text', 'text', 'Светлая тема')
+    else:
+        set_browser_setting('theme', 'light')
+        setattribute('theme_button_text', 'text', 'Темная тема')
+    load_site('zov://settings') # Reload settings to apply theme instantly
+}
+
+@set_homepage{
+    homepage_value = getvariable('homepage_entry')
+    if homepage_value:
+        set_browser_setting('homepage', homepage_value)
+        load_site('zov://settings') # Reload settings page to refresh
+    else:
+        setattribute('homepage_input', 'text', 'Введите адрес') # Example error message
+}
